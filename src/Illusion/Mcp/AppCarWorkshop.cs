@@ -682,8 +682,10 @@ internal sealed class AppCarWorkshop : ICarWorkshop
         if (failed != null) return failed;
         if (changed)
         {
-            // the table is one of tables.sds: that archive goes on the build list
+            // the table is one of tables.sds: that archive goes on the build list - the resource editor's, and
+            // the map editor's when that is the one open
             Application.Current.Windows.OfType<ResourceEditorWindow>().FirstOrDefault()?.TargetStage.MarkArchiveModified(tables);
+            Viewport.ZoneWrites.Written(tables);
         }
         static CarKindRow Said(Assets.Cars.CarKind.Row r) => new(r.Id, r.Name, $"0x{r.Flags:X8}", $"0x{r.MoreFlags:X8}", r.CopReport);
         result = new CarKindInfo(row!.Name, Said(row), before == null ? null : Said(before), string.IsNullOrWhiteSpace(like) ? null : like.Trim(), changed, table);

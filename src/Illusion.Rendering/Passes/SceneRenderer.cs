@@ -460,6 +460,10 @@ public sealed unsafe class SceneRenderer : IDisposable
 
     /// <summary>Registers an already-created mesh with the render list. UI thread only —
     /// the render loop iterates the list without a lock.</summary>
+    /// <summary>Whether a mesh is still on the render list: a scene reset (<see cref="Clear"/>) disposes every
+    /// mesh, those a tool attached of its own among them.</summary>
+    public bool Draws(GpuMesh mesh) => _meshes.Contains(mesh);
+
     public void AttachMesh(GpuMesh gm)
     {
         // Meshes arriving during bridge edit mode (streaming, undo re-attach) join the ghost side

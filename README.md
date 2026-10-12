@@ -333,7 +333,7 @@ map editor itself.
 | **Utility** | `hash_fnv32`, `hash_fnv64`, `hash_batch`, `convert_number`, `detect_file_format`, `detect_format_from_bytes`, `list_game_files`, `get_configured_games`, `ping` |
 | **Editor** | `editor_status`, `editor_list_areas`, `editor_open_area`, `editor_save`, `editor_build`, `editor_mirror_winter`, `editor_undo`, `editor_redo`, `editor_notices` |
 | **Scene** | `scene_find`, `scene_select`, `scene_delete_selected`, `scene_duplicate_selected`, `object_move`, `object_properties`, `object_set_property`, `actor_import`, `object_import`, `mesh_hide_triangles`, `mesh_materials`, `collision_unused_hulls`, `crash_placements` |
-| **Interiors** | `shop_places`, `shop_place_add`, `shop_place_delete`, `shop_create`, `shop_delete` |
+| **Interiors** | `shop_places`, `shop_place_add`, `shop_place_move`, `shop_place_delete`, `shop_create`, `shop_delete` |
 | **Resource editor** | `editor_target`, `resource_list`, `resource_open`, `resource_status`, `car_tuning`, `car_tuning_set` |
 | **Cars** | `car_clone`, `car_substitute`, `car_export_m2o`, `archive_build`, `car_materials`, `car_material_like`, `car_lights`, `car_light_set`, `car_light_remove`, `car_bone_add`, `car_beacon`, `car_collisions`, `car_collision_add`, `car_collision_remove`, `car_winter`, `car_check`, `car_lamp_ids`, `car_glass`, `car_paint_mask`, `car_exhausts`, `car_point_copy`, `car_wheels`, `car_bone_move`, `car_kind` |
 | **Loading zones** | `zones_at`, `zones_map`, `zone_move_face`, `zone_create`, `zone_delete` |
@@ -373,8 +373,9 @@ zone the game ships with is refused). Zones are made in the base game's `city_un
 **Interiors.** The game stands a shop, a diner or a flat at a place through three things: a marker
 frame inside the interior's archive under `shops\`, a pair of box volumes in `city_univers` that
 load it and let it go, and rows of `missions\SHOPS\cityshops.bin`. `shop_places` lists the
-interiors and the places each stands at, `shop_place_add` stands one at another place and
-`shop_place_delete` takes a place out. `shop_create` makes a new interior as a copy of an existing
+interiors and the places each stands at, `shop_place_add` stands one at another place,
+`shop_place_move` moves an added place - marker, volumes and row as they are - and
+`shop_place_delete` takes one out. `shop_create` makes a new interior as a copy of an existing
 one under its own name with its own row, and `shop_delete` removes it. A save is all or nothing.
 `object_import` takes a parent frame and, like `actor_import`, works on the archive open in the
 resource editor, which is how an interior is furnished and lit.

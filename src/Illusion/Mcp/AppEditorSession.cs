@@ -1727,22 +1727,57 @@ internal sealed class AppEditorSession : IEditorSession
     }
 
     public string? ShopPlaceAdd(string shop, float[] point, float turn, float loadHalf, float unloadHalf, float halfHeight, bool apply,
-        out ShopPlaceInfo? place, out IReadOnlyList<string> archives)
+        out ShopPlaceInfo? place, out IReadOnlyList<string> archives, out IReadOnlyList<string> notes)
     {
         place = null;
         archives = [];
+        notes = [];
         if (EnsureEnvironment() is { } notReady) return notReady;
         if (string.IsNullOrWhiteSpace(shop)) return "shop is the interior's name, as shop_places lists it";
         if (point is not { Length: 3 } || point.Any(v => !float.IsFinite(v))) return "point is [x, y, z], finite numbers";
-        return ChangeShopPlaces(apply, "add the place", out place, out archives,
+        var at = new Vector3(point[0], point[1], point[2]);
+        var told = new List<string>();
+        string? refused = ChangeShopPlaces(apply, "add the place", out place, out archives,
             (Assets.World.ShopPlaces places, out Assets.World.ShopPlaces.PlaceInfo? made) =>
             {
                 made = null;
                 // An interior a DLC ships is in the DLC's folder: the base game has to have it before it can
-                // stand anywhere in the base game. Only when the place is really written.
-                if (apply && places.BringIn(shop.Trim(), out _) is { } notBrought) return notBrought;
-                return places.Add(shop.Trim(), new Vector3(point[0], point[1], point[2]), turn, loadHalf, unloadHalf, halfHeight, out made);
+                // stand anywhere in the base game. The copy is a file put into the game, so it is made only for
+                // a place that will be written: the place is tried first on a reading of its own, where a
+                // refusal costs nothing.
+                if (places.OnlyInDlc(shop.Trim()) is { } dlc)
+                {
+                    Assets.World.ShopPlaces trial = Assets.World.ShopPlaces.Open(f => Assets.Sds.SdsMeshLoader.EnsureExtracted(f));
+                    if (trial.Add(shop.Trim(), at, turn, loadHalf, unloadHalf, halfHeight, out _) is { } wouldRefuse) return wouldRefuse;
+                    if (!apply)
+                    {
+                        told.Add($"the archive is {dlc}'s: with apply it is copied into pc\\sds\\shops first, where the base game looks for it");
+                    }
+                    else
+                    {
+                        if (places.BringIn(shop.Trim(), out _, out bool listReset) is { } notBrought) return notBrought;
+                        told.Add($"the archive was copied from {dlc} into pc\\sds\\shops (nothing was overwritten)");
+                        told.Add(listReset
+                            ? "the game's file list (vfs.bin) was reset - the next start rebuilds it with the copy"
+                            : $"the game's file list was not reset - remove {Assets.Sds.GameFileIndex.Path} before starting the game, or it will not find the copy");
+                    }
+                }
+                return places.Add(shop.Trim(), at, turn, loadHalf, unloadHalf, halfHeight, out made);
             });
+        notes = told;
+        return refused;
+    }
+
+    public string? ShopPlaceMove(string marker, float[] point, float turn, bool apply, out ShopPlaceInfo? place, out IReadOnlyList<string> archives)
+    {
+        place = null;
+        archives = [];
+        if (EnsureEnvironment() is { } notReady) return notReady;
+        if (string.IsNullOrWhiteSpace(marker)) return "marker is the place's marker, as shop_places lists it";
+        if (point is not { Length: 3 } || point.Any(v => !float.IsFinite(v)) || !float.IsFinite(turn)) return "point is [x, y, z] and turn is degrees, finite numbers";
+        return ChangeShopPlaces(apply, "move the place", out place, out archives,
+            (Assets.World.ShopPlaces places, out Assets.World.ShopPlaces.PlaceInfo? moved) =>
+                places.Move(marker.Trim(), new Vector3(point[0], point[1], point[2]), turn, out _, out moved));
     }
 
     public string? ShopPlaceDelete(string marker, bool apply, out ShopPlaceInfo? place, out IReadOnlyList<string> archives)
@@ -1825,7 +1860,7 @@ internal sealed class AppEditorSession : IEditorSession
                 // finds archives through a cached list of files that a new one is not in
                 Assets.Sds.SdsWriter.PackResult packed = Assets.Sds.SdsWriter.PackSds(shopArchive, createBackup: false);
                 notes?.Add($"packed the new archive {packed.Archive}");
-                notes?.Add(Assets.Sds.GameFileIndex.Reset()
+                notes?.Add(Assets.Sds.GameFileIndex.Reset() || !File.Exists(Assets.Sds.GameFileIndex.Path)
                     ? "the game's file list (vfs.bin) was reset - the next start rebuilds it with the new archive"
                     : $"the game's file list was not reset - remove {Assets.Sds.GameFileIndex.Path} before starting the game, or it will not find the new archive");
             }

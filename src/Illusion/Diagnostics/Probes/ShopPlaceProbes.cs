@@ -88,6 +88,54 @@ internal static class ShopPlaceProbes
                 Check("the game's own places are not shown as added", places.Shops("Gunshop").First(s => s.Name == "Gunshop").Places.Count(p => p.Added) == 1
                     + (placesBefore - 11), $"{placesBefore} places before");
 
+                Check("its turn reads back as it was asked", listed?.Turn is { } readTurn && MathF.Abs(readTurn - 90f) < 1e-2f, $"{listed?.Turn}");
+
+                // ---- a second place beside the first: each inside the other's load box, each with its own pair
+                ShopPlaces.PlaceInfo? Listed(string name) => places.Shops("Gunshop").First(s => s.Name == "Gunshop").Places.FirstOrDefault(p => p.Marker == name);
+                FrameObjectArea? Volume(string? name) => cityScene.FrameObjects.Values.OfType<FrameObjectArea>().FirstOrDefault(v => v.Name.String == name);
+                Vector3 beside = at + new Vector3(10f, 0f, 0f);
+                refused = places.Add("gunshop", beside, 0f, 35f, 60f, 23f, out ShopPlaces.PlaceInfo? second);
+                Check("a second place is added 10 m from the first", refused == null && second != null, refused ?? second!.Marker);
+                if (second != null)
+                {
+                    Check("each of the two is listed with the pair made round it", Listed(made.Marker) is { Added: true } one && one.LoadZone == made.LoadZone
+                        && Listed(second.Marker) is { Added: true } two && two.LoadZone == second.LoadZone && second.LoadZone != made.LoadZone,
+                        $"{Listed(made.Marker)?.LoadZone} / {Listed(second.Marker)?.LoadZone}");
+
+                    byte[] beforeRefusals = places.Table.ToBytes();
+                    Check("a place the game ships with is not moved", places.Move(gun.Places[1].Marker, at, 0f, out _, out _) != null,
+                        places.Move(gun.Places[1].Marker, at, 0f, out _, out _) ?? "");
+                    Check("a place that is not there is not moved", places.Move("no_such_marker", at, 0f, out _, out _) != null);
+                    Check("the refused moves changed nothing", beforeRefusals.AsSpan().SequenceEqual(places.Table.ToBytes()));
+
+                    var far = new Vector3(-1500f, -210f, -12f);
+                    refused = places.Move(second.Marker, far, 45f, out ShopPlaces.PlaceInfo? was, out ShopPlaces.PlaceInfo? now);
+                    Check("the second place is moved", refused == null && now != null, refused ?? "");
+                    if (now != null)
+                    {
+                        Check("it keeps its marker and its pair of volumes", now.Marker == second.Marker && now.LoadZone == second.LoadZone && now.UnloadZone == second.UnloadZone
+                            && now.Added && was?.At is { } stoodAt && Vector3.Distance(stoodAt, beside) < 1e-3f);
+                        Check("it stands at the new point, turned as asked", now.At is { } nowAt && Vector3.Distance(nowAt, far) < 1e-3f && now.Turn is { } nowTurn
+                            && MathF.Abs(nowTurn - 45f) < 1e-2f && MathF.Abs(now.MapX - far.X) < 1e-3f && MathF.Abs(now.MapY - far.Y) < 1e-3f, $"{now.At} turn {now.Turn}");
+                        foreach ((string? name, float half) in new[] { (now.LoadZone, 35f), (now.UnloadZone, 60f) })
+                        {
+                            Check($"{name} went with it and is the size it was", Volume(name) is { } volume && LoadZones.Contains(volume, far + new Vector3(half - 1f, 0, 0), out _)
+                                && !LoadZones.Contains(volume, far + new Vector3(half + 1f, 0, 0), out _) && !LoadZones.Contains(volume, beside, out _));
+                        }
+                        Check("the first place stands where it stood, with its own pair", Listed(made.Marker) is { Added: true } still && still.LoadZone == made.LoadZone
+                            && still.At is { } stillAt && Vector3.Distance(stillAt, at) < 1e-3f && Volume(made.LoadZone) is { } firstBox
+                            && LoadZones.Contains(firstBox, at + new Vector3(34f, 0, 0), out _));
+                        // back beside the first: taking it out there must take ITS volumes, not the first's
+                        refused = places.Move(second.Marker, beside, 0f, out _, out _);
+                        Check("it is moved back beside the first", refused == null, refused ?? "");
+                    }
+                    refused = places.Remove(second.Marker, out ShopPlaces.PlaceInfo? taken);
+                    Check("the second place is taken out with its own volumes", refused == null && taken?.LoadZone == second.LoadZone && Volume(second.LoadZone) == null
+                        && Volume(second.UnloadZone) == null, refused ?? taken?.LoadZone ?? "");
+                    Check("the first place keeps its marker and both its volumes", Listed(made.Marker) is { Added: true } kept && kept.LoadZone == made.LoadZone
+                        && Volume(made.LoadZone) != null && Volume(made.UnloadZone) != null);
+                }
+
                 refused = places.Remove(made.Marker, out ShopPlaces.PlaceInfo? gone);
                 Check("the added place is taken out", refused == null && gone?.Marker == made.Marker, refused ?? "");
                 Check("the table is as it was read, byte for byte", tableBefore.AsSpan().SequenceEqual(places.Table.ToBytes()));
@@ -127,6 +175,14 @@ internal static class ShopPlaceProbes
                 Check("its first place is a marker of its own at the point", room.Marker == "PROBE_ROOM_translocator_01" && mark is FrameObjectDummy { Children.Count: 0 }
                     && Vector3.Distance(mark.WorldTransform.Translation, roomAt) < 1e-3f);
                 Check("the copied interior's own markers are gone from the copy", !frames.Any(f => (f.Name.String ?? "").StartsWith("Lokace_ElGreco_translocator", StringComparison.OrdinalIgnoreCase)));
+                // an interior's only place cannot be taken out - and is moved like any other
+                Vector3 roomThere = roomAt + new Vector3(40f, -25f, 3f);
+                string? notMoved = fresh.Move(room.Marker, roomThere, 30f, out _, out ShopPlaces.PlaceInfo? roomNow);
+                Check("its only place is moved, marker and volumes kept", notMoved == null && roomNow is { Added: true } && roomNow.Marker == room.Marker
+                    && roomNow.LoadZone == room.LoadZone && roomNow.At is { } movedTo && Vector3.Distance(movedTo, roomThere) < 1e-3f, notMoved ?? $"{roomNow?.At}");
+                notMoved = fresh.Move(room.Marker, roomAt, 0f, out _, out roomNow);
+                Check("and moved back to where it was made", notMoved == null && roomNow?.At is { } backAt && Vector3.Distance(backAt, roomAt) < 1e-3f
+                    && roomNow.Turn is { } backTurn && MathF.Abs(backTurn) < 1e-2f && Vector3.Distance(mark!.WorldTransform.Translation, roomAt) < 1e-3f, notMoved ?? "");
                 CityShopsTable back = CityShopsTable.Parse(fresh.Table.ToBytes());
                 CityShopsTable.Shop? made2 = back.Shops.FirstOrDefault(s => s.Name == "probe_room");
                 Check("the table reads back with a row of its own, the copied entities and one place", back.Shops.Count == shopsBefore + 1 && made2 != null

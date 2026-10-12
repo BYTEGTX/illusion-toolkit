@@ -340,7 +340,10 @@ public sealed partial class InteriorsWindow : Window
         Say($"{copy ?? shop} stands here now. Move and turn it with the gizmo of the tool shelf; Ctrl+Z takes "
             + (copy == null ? "it" : "a move") + $" back. Build packs {Files(archives)}."
             + (dlc == null || copy != null ? "" : $" It is {Short(dlc)}'s interior: its archive was copied into pc\\sds\\shops so the base game "
-                + "has it, and its materials are that DLC's - Materials of an archive saves them as a library for a server."), isError: false);
+                + "has it, and its materials are that DLC's - Materials of an archive saves them as a library for a server."
+                // the game finds its archives through a cached list, which a running game holds
+                + (File.Exists(Assets.Sds.GameFileIndex.Path) ? $" The game's file list could not be reset (is the game running?): remove "
+                    + $"{Assets.Sds.GameFileIndex.Path} before starting it, or it will not find the copy." : "")), isError: false);
     }
 
     private static string Files(IReadOnlyList<string> archives) =>

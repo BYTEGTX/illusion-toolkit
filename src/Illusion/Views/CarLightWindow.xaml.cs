@@ -86,7 +86,9 @@ public sealed partial class CarLightWindow : Window
                 new("Taxi sign", "taxi sign"),
             };
             SideCombo.ItemsSource = new List<string> { "left", "right" };
-            var models = new List<Choice> { new("As its kind does", null) };
+            // No model named: a new light gets the one its kind has, a changed light keeps its own - whatever
+            // its kind is changed to.
+            var models = new List<Choice> { new(light == null ? "As its kind does" : "As it is", null) };
             models.AddRange(CarWorkshopWindow.LightModels.Select(m => new Choice(m.Title, m.Model)));
             ModelCombo.ItemsSource = models;
             var parts = new List<string> { NoPart };
@@ -210,7 +212,7 @@ public sealed partial class CarLightWindow : Window
     /// <summary>"left" or "right"; null to keep the entry's.</summary>
     public string? Side => SideCombo.SelectedItem as string;
 
-    /// <summary>The light model; null for the one its kind has.</summary>
+    /// <summary>The light model; null for the one its kind has (a new light) or the one it has (a changed one).</summary>
     public string? Model => (ModelCombo.SelectedItem as Choice)?.Value;
 
     /// <summary>The parts it goes dark without: empty keeps what the entry has, the single "-" takes them off.</summary>

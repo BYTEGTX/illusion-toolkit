@@ -240,6 +240,75 @@ public sealed class ShopPlaces
     }
 
     /// <summary>
+    /// Moves a place that was ADDED, IN MEMORY: its marker goes to <paramref name="at"/> turned by
+    /// <paramref name="turnDegrees"/>, its pair of volumes goes with it as it is - names, sizes and whatever the
+    /// volumes were given since - and the table's spot on the map follows. A place the game ships with is
+    /// refused. An interior's only place is moved like any other. <see cref="Save"/> writes it.
+    /// </summary>
+    /// <returns>Null on success, otherwise why not; nothing is changed on a refusal.</returns>
+    public string? Move(string marker, Vector3 at, float turnDegrees, out PlaceInfo? before, out PlaceInfo? after)
+    {
+        before = after = null;
+        if (!float.IsFinite(at.X) || !float.IsFinite(at.Y) || !float.IsFinite(at.Z) || !float.IsFinite(turnDegrees))
+        {
+            return "the place and the turn must be finite numbers";
+        }
+        CityShopsTable.Shop? row = _table.Shops.FirstOrDefault(s => s.Places.Any(p => Same(p.Marker, marker)));
+        if (row == null) return $"no place of the table has the marker '{marker}'";
+        CityShopsTable.Place place = row.Places.First(p => Same(p.Marker, marker));
+        string archive = ArchiveOf(row);
+        if (Hold(archive) is { } notHeld) return notHeld;
+        FrameResource scene = _shopScene!;
+
+        if (Find(scene, place.Marker) is not { } frame) return $"the archive of {row.Name} has no frame named '{place.Marker}'";
+        if (frame.Parent != null) return $"{place.Marker} hangs on another frame - it is not a place that was added here";
+        if (frame.Children.Count > 0 || scene.FrameObjects.Values.OfType<FrameObjectBase>().Any(o => ReferenceEquals(o.Parent, frame) || ReferenceEquals(o.Root, frame)))
+            return $"other frames hang on {place.Marker} - it carries the interior itself";
+        PlaceInfo info = Describe(row, archive, place, scene);
+        if (info.LoadZone == null || info.UnloadZone == null || info.At is not { } stood || info.Turn is not { } turned)
+            return $"no pair of volumes of the table holds {place.Marker} - it is not a place that was added here";
+        if (!info.Added) return $"{place.Marker} came with the game ({info.LoadZone}) - only a place that was added is moved";
+        CityShopsTable.Area area = _table.Areas.First(a => Same(a.LoadZone, info.LoadZone) && Same(a.UnloadZone, info.UnloadZone));
+
+        var volumes = new List<(FrameObjectBase Volume, Matrix4x4 UnTurn)>(2);
+        foreach (string zone in new[] { area.LoadZone, area.UnloadZone })
+        {
+            if (_table.Areas.Any(a => !ReferenceEquals(a, area) && (Same(a.LoadZone, zone) || Same(a.UnloadZone, zone))))
+                return $"{zone} is another place's volume too - {place.Marker} cannot be moved alone";
+            if (Find(_cityScene, zone) is not { } volume) return $"city_univers has no volume named '{zone}'";
+            Matrix4x4 parent = (volume.Parent ?? volume.Root)?.WorldTransform ?? Matrix4x4.Identity;
+            parent.Translation = Vector3.Zero;
+            if (!Matrix4x4.Invert(Whole(parent), out Matrix4x4 unTurn)) return $"{zone} hangs on a frame whose transform cannot be inverted";
+            volumes.Add((volume, unTurn));
+        }
+
+        // ---- everything can be done: the marker turns about the vertical where it stands, and goes
+        Matrix4x4 was = Whole(frame.LocalTransform);
+        was.Translation = Vector3.Zero;
+        Matrix4x4 now = was * Matrix4x4.CreateRotationZ((turnDegrees - turned) * MathF.PI / 180f);
+        Matrix4x4 local = frame.LocalTransform;     // the fourth column as this scene stores it
+        local.M11 = now.M11; local.M12 = now.M12; local.M13 = now.M13;
+        local.M21 = now.M21; local.M22 = now.M22; local.M23 = now.M23;
+        local.M31 = now.M31; local.M32 = now.M32; local.M33 = now.M33;
+        local.Translation = at;
+        frame.LocalTransform = local;
+
+        // ---- the volumes go the same way; they stand square to the map whatever the turn
+        foreach ((FrameObjectBase volume, Matrix4x4 unTurn) in volumes)
+        {
+            Matrix4x4 there = volume.LocalTransform;
+            there.Translation += Vector3.TransformNormal(at - stood, unTurn);
+            volume.LocalTransform = there;
+        }
+
+        place.MapX = at.X;
+        place.MapY = at.Y;
+        before = info;
+        after = Describe(row, archive, place, scene);
+        return null;
+    }
+
+    /// <summary>
     /// Makes an interior OF ONE'S OWN, IN MEMORY: a copy of one of the table's interiors under a new name, with
     /// its first place at <paramref name="at"/>. The copy is an archive of its own - <c>shops\&lt;name&gt;.sds</c>,
     /// made from the working copy of <paramref name="like"/> - whose marker frames bear the new name, and a row
@@ -497,9 +566,12 @@ public sealed class ShopPlaces
     /// the copy. Does nothing for an interior the base game already has. Null on success.
     /// </summary>
     /// <param name="from">The DLC it was brought from; null when nothing had to be brought.</param>
-    public string? BringIn(string shop, out string? from)
+    /// <param name="listReset">Whether the game's cached list of files was reset; false leaves the copy unseen
+    /// by the game until that file is removed.</param>
+    public string? BringIn(string shop, out string? from, out bool listReset)
     {
         from = null;
+        listReset = false;
         CityShopsTable.Shop? row = _table.Shops.FirstOrDefault(s => Is(s, shop));
         if (row == null) return null;       // the caller's own refusal says the name is not one
         string archive = ArchiveOf(row);
@@ -515,10 +587,15 @@ public sealed class ShopPlaces
         {
             return $"{archive}.sds could not be copied from {dlc} into pc\\sds\\shops: {ex.Message}";
         }
-        GameFileIndex.Reset();
+        listReset = GameFileIndex.Reset() || !File.Exists(GameFileIndex.Path);     // none to reset is as good
         from = dlc;
         return null;
     }
+
+    /// <summary>The DLC whose folder holds an interior's archive while the base game has none - what
+    /// <see cref="BringIn"/> would copy it from. Null for an interior of the base game, or an unknown one.</summary>
+    public string? OnlyInDlc(string shop) =>
+        _table.Shops.FirstOrDefault(s => Is(s, shop)) is { } row && ArchiveFile(ArchiveOf(row)) is { Exists: true } found ? DlcOf(found) : null;
 
     private FrameResource? SceneOf(string archive)
     {
@@ -550,12 +627,49 @@ public sealed class ShopPlaces
         {
             Matrix4x4 world = frame.WorldTransform;
             at = world.Translation;
-            turn = MathF.Atan2(world.M12, world.M11) * 180f / MathF.PI;
-            area = _table.Areas.FirstOrDefault(a => Same(a.Archive, archive) && Find(_cityScene, a.LoadZone) is FrameObjectArea volume
-                && LoadZones.Contains(volume, world.Translation, out _));
+            // against the marker that carries the interior: that is what a place is added with (AddPlace), and
+            // what the interior is turned by on the map
+            float stands = Find(scene, shop.Holder) is { } holder && !ReferenceEquals(holder, frame) ? Yaw(holder.WorldTransform) : 0f;
+            turn = MathF.IEEERemainder(Yaw(world) - stands, 360f);
+            area = AreaOf(shop, archive, place, world.Translation, scene);
         }
         bool added = area != null && !LoadZones.IsShipped(area.LoadZone);
         return new PlaceInfo(shop.Name, archive, place.Marker, at, turn, place.MapX, place.MapY, area?.LoadZone, area?.UnloadZone, added);
+    }
+
+    private static float Yaw(Matrix4x4 world) => MathF.Atan2(world.M12, world.M11) * 180f / MathF.PI;
+
+    // How near a volume's middle is to a marker for the volume to be the one made round it.
+    private const float MadeRound = 0.5f;
+
+    // The pair of volumes a place is loaded by: one whose load box holds its marker. Two places of one interior
+    // can stand inside each other's boxes - dropped side by side, or one dropped near a place of the game's -
+    // and "the first box that holds the marker" then gives a place its neighbour's pair: taking it out would
+    // take the neighbour's volumes. A pair that was added is made round its marker, so it is that place's, and
+    // nobody else's.
+    private CityShopsTable.Area? AreaOf(CityShopsTable.Shop shop, string archive, CityShopsTable.Place place, Vector3 at, FrameResource scene)
+    {
+        var holding = new List<(CityShopsTable.Area Area, Vector3 Middle)>();
+        foreach (CityShopsTable.Area area in _table.Areas)
+        {
+            if (Same(area.Archive, archive) && Find(_cityScene, area.LoadZone) is FrameObjectArea volume && LoadZones.Contains(volume, at, out _))
+            {
+                holding.Add((area, volume.WorldTransform.Translation));
+            }
+        }
+        if (holding.Count == 0) return null;
+        bool Round(Vector3 middle, Vector3 marker) => Vector3.DistanceSquared(middle, marker) < MadeRound * MadeRound;
+        foreach ((CityShopsTable.Area area, Vector3 middle) in holding)
+        {
+            if (!LoadZones.IsShipped(area.LoadZone) && Round(middle, at)) return area;
+        }
+        List<Vector3> others = [.. shop.Places.Where(p => !ReferenceEquals(p, place)).Select(p => Find(scene, p.Marker)).OfType<FrameObjectBase>()
+            .Select(f => f.WorldTransform.Translation)];
+        foreach ((CityShopsTable.Area area, Vector3 middle) in holding)
+        {
+            if (LoadZones.IsShipped(area.LoadZone) || !others.Any(o => Round(middle, o))) return area;
+        }
+        return null;
     }
 
     // ---- the scenes

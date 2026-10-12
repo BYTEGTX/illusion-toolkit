@@ -1215,7 +1215,10 @@ public sealed class D3DImageHost : ViewportControl, ITransformGizmoHost, IBoxGiz
     {
         // A tool that is picking on the scene (Tools → Hide triangles picks triangles) is offered the click
         // first; what it does not take is an ordinary click.
-        if (SceneClickTaker is { } taker && taker(pos)) return;
+        for (int i = _sceneClickTakers.Count - 1; i >= 0; i--)
+        {
+            if (_sceneClickTakers[i](pos)) return;
+        }
         // Then what is drawn on the map without being of the scene (the Interiors layer): a click on one of its
         // interiors picks it, and the gizmo is its own until something else is clicked.
         if (StandInClickTaker is { } standIn && standIn(pos)) return;
@@ -1237,9 +1240,20 @@ public sealed class D3DImageHost : ViewportControl, ITransformGizmoHost, IBoxGiz
         else Select(hit);
     }
 
-    /// <summary>While set, a left click on the scene is offered to it before anything is selected; true means
-    /// the click was its own. One tool at a time: the tool that sets it clears it.</summary>
-    internal Func<Point, bool>? SceneClickTaker { get; set; }
+    private readonly List<Func<Point, bool>> _sceneClickTakers = [];
+
+    /// <summary>From now on a left click on the scene is offered to <paramref name="taker"/> before anything is
+    /// selected; true means the click was its own. Several tool windows can be open over one stage: the one
+    /// that asked last - a window asks again when it comes forward - is offered the click first, and what it
+    /// does not take goes to the next.</summary>
+    internal void TakeSceneClicks(Func<Point, bool> taker)
+    {
+        _sceneClickTakers.Remove(taker);
+        _sceneClickTakers.Add(taker);
+    }
+
+    /// <summary>The tool is done: clicks go to whoever else asked, or select as they do.</summary>
+    internal void ReleaseSceneClicks(Func<Point, bool> taker) => _sceneClickTakers.Remove(taker);
 
     /// <summary>The same for what a layer draws beside the scene: asked on every click, after a tool's own
     /// taker, so that a click elsewhere also tells it that its pick is over.</summary>

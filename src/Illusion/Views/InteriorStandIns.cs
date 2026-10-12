@@ -308,6 +308,13 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
         }
         _scene = _host.Roots.FirstOrDefault();
 
+        // A scene reset - the same area opened again, the whole map switched - clears the renderer, and these
+        // meshes with it: what it no longer draws is not drawn, whatever the list here says.
+        foreach (string cleared in _drawn.Where(d => d.Value.Count > 0 && !renderer.Draws(d.Value[0].Mesh)).Select(d => d.Key).ToList())
+        {
+            _drawn.Remove(cleared);
+        }
+
         _standing = Wanted(out int skipped);
         var keep = _standing.Select(w => w.Key).ToHashSet();
         foreach (string gone in _drawn.Keys.Where(k => !keep.Contains(k)).ToList())
@@ -351,8 +358,8 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
     // ── writing: every change of a place is a step of the editor's history ──
 
     // A place as the history knows it. The table names a place by its marker, and a place that is taken out and
-    // stood again - which is how it is moved - comes back under another marker: every step about one place
-    // holds the same handle, so that an older step still finds the place a newer one has renamed.
+    // stood again - an undone Remove - comes back under another marker: every step about one place holds the
+    // same handle, so that an older step still finds the place a newer one has renamed. (A move keeps the marker.)
     private sealed class Handle
     {
         public string? Marker;      // null while the place stands nowhere (taken out, or not made again yet)
@@ -366,27 +373,25 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
         return handle;
     }
 
-    // Takes a place out where it stands and stands it at `to` - null for nowhere. When it could be taken out
-    // and not stood again it is put back at `from`, rather than left nowhere. Null on success.
-    private string? Put(string shop, Handle handle, (Vector3 At, float Turn)? from, (Vector3 At, float Turn)? to,
-        out IReadOnlyList<string> archives)
+    // Takes a place from where it stands to `to`: a place that stands and goes on standing is MOVED - marker,
+    // volumes and all, as they are; one that stands nowhere is stood, and `to` null takes it out. Each is one
+    // write that either happens or changes nothing. Null on success.
+    private string? Put(string shop, Handle handle, (Vector3 At, float Turn)? to, out IReadOnlyList<string> archives, out IReadOnlyList<string> notes)
     {
         archives = [];
-        string? refused = null;
+        notes = [];
         System.Windows.Input.Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
         try
         {
-            if (handle.Marker is { } standing)
+            if (handle.Marker is not { } standing) return to is { } fresh ? Add(shop, handle, fresh, out archives, out notes) : null;
+            if (to is { } there)
             {
-                refused = _session.ShopPlaceDelete(standing, apply: true, out _, out archives);
-                if (refused != null) return refused;
-                _handles.Remove(standing);
-                handle.Marker = null;
+                return _session.ShopPlaceMove(standing, [there.At.X, there.At.Y, there.At.Z], there.Turn, apply: true, out _, out archives);
             }
-            if (to is not { } there) return null;
-            refused = Add(shop, handle, there, out archives);
-            if (refused != null && from is { } back) Add(shop, handle, back, out _);
-            return refused;
+            if (_session.ShopPlaceDelete(standing, apply: true, out _, out archives) is { } refused) return refused;
+            _handles.Remove(standing);
+            handle.Marker = null;
+            return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or InvalidDataException)
         {
@@ -398,10 +403,12 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
         }
     }
 
-    private string? Add(string shop, Handle handle, (Vector3 At, float Turn) there, out IReadOnlyList<string> archives)
+    // A place stood again by an undone Remove gets boxes of the usual size: what its volumes were given by hand
+    // before it was taken out is not kept.
+    private string? Add(string shop, Handle handle, (Vector3 At, float Turn) there, out IReadOnlyList<string> archives, out IReadOnlyList<string> notes)
     {
         string? refused = _session.ShopPlaceAdd(shop, [there.At.X, there.At.Y, there.At.Z], there.Turn, LoadHalf, UnloadHalf, HalfHeight,
-            apply: true, out ShopPlaceInfo? made, out archives);
+            apply: true, out ShopPlaceInfo? made, out archives, out notes);
         if (refused != null || made == null) return refused ?? "nothing was written";
         handle.Marker = made.Marker;
         _handles[made.Marker] = handle;
@@ -427,29 +434,29 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
     private sealed class PlaceEdit(InteriorStandIns owner, string shop, Handle handle, (Vector3 At, float Turn)? before,
         (Vector3 At, float Turn)? after) : IEditAction
     {
-        public void Undo() => Go(after, before, "put back");
+        public void Undo() => Go(before, "put back");
 
-        public void Redo() => Go(before, after, "done again");
+        public void Redo() => Go(after, "done again");
 
-        private void Go((Vector3 At, float Turn)? from, (Vector3 At, float Turn)? to, string what)
+        private void Go((Vector3 At, float Turn)? to, string what)
         {
-            string? refused = owner.Put(shop, handle, from, to, out _);
+            string? refused = owner.Put(shop, handle, to, out _, out _);
             owner.Written(handle, pick: to != null);
             if (refused != null) throw new EditRefusedException($"{shop} was not {what}: {ToolText.ForPeople(refused)}");
         }
     }
 
     /// <summary>The marker of the place just stood: what <see cref="Stand"/> answers with.</summary>
-    public sealed record Stood(string Marker, IReadOnlyList<string> Archives);
+    public sealed record Stood(string Marker, IReadOnlyList<string> Archives, IReadOnlyList<string> Notes);
 
     /// <summary>Stands an interior at one more place. One step of the history: Ctrl+Z takes it out again.</summary>
     public string? Stand(string shop, Vector3 at, float turn, out Stood? stood)
     {
         stood = null;
         var handle = new Handle();
-        if (Put(shop, handle, null, (at, turn), out IReadOnlyList<string> archives) is { } refused) return refused;
+        if (Put(shop, handle, (at, turn), out IReadOnlyList<string> archives, out IReadOnlyList<string> notes) is { } refused) return refused;
         _host.History.Push(new PlaceEdit(this, shop, handle, null, (at, turn)));
-        stood = new Stood(handle.Marker!, archives);
+        stood = new Stood(handle.Marker!, archives, notes);
         Written(handle, pick: true);
         return null;
     }
@@ -458,7 +465,7 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
     public string? Remove(string shop, string marker, Vector3 at, float turn)
     {
         Handle handle = HandleOf(marker);
-        if (Put(shop, handle, (at, turn), null, out _) is { } refused) return refused;
+        if (Put(shop, handle, null, out _, out _) is { } refused) return refused;
         _host.History.Push(new PlaceEdit(this, shop, handle, (at, turn), null));
         Written(handle, pick: false);
         return null;
@@ -563,6 +570,10 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
 
     // ── the gizmo (IGizmoStandIn): the picked place, moved and turned like an object ──
 
+    // Between a scene reset and the next look at the map the meshes here are disposed ones: not to be touched.
+    private bool StillDrawn(List<(GpuMesh Mesh, Matrix4x4 World)> meshes) =>
+        meshes.Count > 0 && _host.Rnd is { } renderer && renderer.Draws(meshes[0].Mesh);
+
     Vector3 IGizmoStandIn.Pivot => _dragged?.At ?? _picked?.At ?? Vector3.Zero;
 
     void IGizmoStandIn.Begin(GizmoMode mode)
@@ -576,7 +587,7 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
     void IGizmoStandIn.Apply(Matrix4x4 totalWorldDelta)
     {
         if (_picked is not { } place || _dragMode == GizmoMode.Scale
-            || !_drawn.TryGetValue(place.Key, out List<(GpuMesh Mesh, Matrix4x4 World)>? meshes))
+            || !_drawn.TryGetValue(place.Key, out List<(GpuMesh Mesh, Matrix4x4 World)>? meshes) || !StillDrawn(meshes))
         {
             return;
         }
@@ -591,7 +602,7 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
 
     void IGizmoStandIn.Cancel()
     {
-        if (_picked != null && _drawn.TryGetValue(_picked.Key, out List<(GpuMesh Mesh, Matrix4x4 World)>? meshes))
+        if (_picked != null && _drawn.TryGetValue(_picked.Key, out List<(GpuMesh Mesh, Matrix4x4 World)>? meshes) && StillDrawn(meshes))
         {
             foreach ((GpuMesh mesh, Matrix4x4 world) in meshes) mesh.SetWorld(world);
         }
@@ -599,9 +610,8 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
         ShowMarks(null);
     }
 
-    // Letting go writes it, as one step of the history. A place has no "moved" of its own in the table: it is
-    // taken out and stood again where the gizmo left it, which is three files written twice - a moment, once
-    // per drag.
+    // Letting go writes it, as one step of the history: the place is moved as it is - its marker, its volumes
+    // and its row keep their names and sizes.
     void IGizmoStandIn.End()
     {
         (Vector3 At, float Turn)? left = _dragged;
@@ -611,7 +621,7 @@ internal sealed class InteriorStandIns : IGizmoStandIn, IDisposable
 
         Handle handle = HandleOf(place.Marker);
         (Vector3 At, float Turn) was = (place.At, place.Turn);
-        string? refused = Put(place.Shop, handle, was, now, out _);
+        string? refused = Put(place.Shop, handle, now, out _, out _);
         // One step of the history, like a move of any object: Ctrl+Z stands it where it was.
         if (refused == null) _host.History.Push(new PlaceEdit(this, place.Shop, handle, was, now));
         // Drawn again from what the table says now - where it was left, or where it was when that was refused.

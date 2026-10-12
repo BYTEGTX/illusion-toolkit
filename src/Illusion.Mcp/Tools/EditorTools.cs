@@ -1110,7 +1110,7 @@ public sealed class EditorTools
     }
 
     [McpServerTool(Name = "shop_place_add")]
-    [Description("Stand an interior of shops\\ at ONE MORE PLACE of the city - the way the game itself stands one gun shop at eleven. Three things are written together: a marker frame in the interior's archive at 'point', a pair of box volumes round it in city_univers.sds (inside the smaller the interior is loaded, outside the wider it is let go), and the rows of cityshops.bin. 'point' is where the interior's OWN ORIGIN goes - see with shop_places how an existing marker stands against its room (the gun shop's is 2.08 m above its floor, in the middle of the room). By default it only REPORTS; apply=true writes the working copies - then archive_build BOTH archives named in the answer. Refused while either archive is open in an editor. Seen in the game (a multiplayer client): a twelfth gun shop added this way loads and its shop menu opens; an interior has no outside, so it is see-through from the street unless it stands inside a building. 'turn' follows the game's own markers, which are turned; a turned place added here has not been looked at in the game yet. Take a place out again with shop_place_delete.")]
+    [Description("Stand an interior of shops\\ at ONE MORE PLACE of the city - the way the game itself stands one gun shop at eleven. Three things are written together: a marker frame in the interior's archive at 'point', a pair of box volumes round it in city_univers.sds (inside the smaller the interior is loaded, outside the wider it is let go), and the rows of cityshops.bin. 'point' is where the interior's OWN ORIGIN goes - see with shop_places how an existing marker stands against its room (the gun shop's is 2.08 m above its floor, in the middle of the room). By default it only REPORTS; apply=true writes the working copies - then archive_build BOTH archives named in the answer. Refused while either archive is open in an editor. Seen in the game (a multiplayer client): a twelfth gun shop added this way loads and its shop menu opens; an interior has no outside, so it is see-through from the street unless it stands inside a building. 'turn' follows the game's own markers, which are turned; a turned place added here has not been looked at in the game yet. An interior only a DLC ships is copied into pc\\sds\\shops when the place is written - 'notes' says so. Move a place with shop_place_move, take it out again with shop_place_delete.")]
     public static async Task<string> ShopPlaceAdd(
         IEditorSession editor,
         IUiThreadMarshal ui,
@@ -1126,7 +1126,31 @@ public sealed class EditorTools
         {
             ShopPlaceInfo? place = null;
             IReadOnlyList<string> archives = [];
-            string? refused = await ui.RunAsync(() => editor.ShopPlaceAdd(shop, point, turn, loadHalf, unloadHalf, halfHeight, apply, out place, out archives));
+            IReadOnlyList<string> notes = [];
+            string? refused = await ui.RunAsync(() => editor.ShopPlaceAdd(shop, point, turn, loadHalf, unloadHalf, halfHeight, apply, out place, out archives, out notes));
+            return refused != null ? ToolResult.Invalid(refused) : ToolResult.Json(new { success = true, applied = apply, place, archivesToBuild = archives, notes });
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
+
+    [McpServerTool(Name = "shop_place_move")]
+    [Description("Move a place of an interior that was ADDED (shop_places marks it 'Added') to another point and turn: its marker in the interior's archive goes there and its pair of volumes in city_univers.sds goes with it as it is - names, sizes, whatever the volumes were given since - and the place's spot in cityshops.bin follows. The marker keeps its name. An interior's only place is moved like any other; a place the game ships with is refused. By default it only REPORTS; apply=true writes the working copies - then archive_build BOTH archives named in the answer. Refused while either archive is open in an editor.")]
+    public static async Task<string> ShopPlaceMove(
+        IEditorSession editor,
+        IUiThreadMarshal ui,
+        [Description("The place's marker, as shop_places lists it, e.g. 'GUNSHOP_translocator_14'.")] string marker,
+        [Description("Where the interior's own origin goes, world [x, y, z].")] float[] point,
+        [Description("Turn about the vertical, degrees, counter-clockwise seen from above - the whole turn, as shop_places reads it, not a turn further.")] float turn = 0,
+        [Description("Write the change to the working copies. Default false: report only.")] bool apply = false)
+    {
+        try
+        {
+            ShopPlaceInfo? place = null;
+            IReadOnlyList<string> archives = [];
+            string? refused = await ui.RunAsync(() => editor.ShopPlaceMove(marker, point, turn, apply, out place, out archives));
             return refused != null ? ToolResult.Invalid(refused) : ToolResult.Json(new { success = true, applied = apply, place, archivesToBuild = archives });
         }
         catch (Exception ex)

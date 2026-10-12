@@ -227,9 +227,15 @@ public interface IEditorSession
     /// <summary>Adds a place for an interior: a marker in its archive at <paramref name="point"/>, a pair of box
     /// volumes round it in city_univers, and the rows of cityshops.bin. Without <paramref name="apply"/> nothing is
     /// written. With it the working copies of both archives are saved; <paramref name="archives"/> names the two to
-    /// build. Null on success.</summary>
+    /// build. An interior only a DLC ships is copied into the base game first - when the place can be written,
+    /// and <paramref name="notes"/> says so. Null on success.</summary>
     string? ShopPlaceAdd(string shop, float[] point, float turn, float loadHalf, float unloadHalf, float halfHeight, bool apply,
-        out ShopPlaceInfo? place, out IReadOnlyList<string> archives);
+        out ShopPlaceInfo? place, out IReadOnlyList<string> archives, out IReadOnlyList<string> notes);
+
+    /// <summary>Moves a place that was ADDED: its marker to <paramref name="point"/> turned by
+    /// <paramref name="turn"/>, its pair of volumes with it as they are. A place the game ships with is refused.
+    /// Without <paramref name="apply"/> nothing is written. Null on success.</summary>
+    string? ShopPlaceMove(string marker, float[] point, float turn, bool apply, out ShopPlaceInfo? place, out IReadOnlyList<string> archives);
 
     /// <summary>Takes a place that was ADDED out again: its marker, its volumes and its rows. A place the game ships
     /// with is refused. Without <paramref name="apply"/> nothing is written. Null on success.</summary>

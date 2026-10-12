@@ -46,11 +46,12 @@ public sealed partial class HideTrianglesWindow : Window
         Func<System.Windows.Point, bool> clicks = OnSceneClick;
         _host.SelectionChanged += selection;
         _host.BridgeStateChanged += bridge;
-        _host.SceneClickTaker = clicks;
+        _host.TakeSceneClicks(clicks);
         // An Undo or Redo in the editor changes what is there to hide and tells nobody; coming back to this
         // window is when the count has to be true again.
         Activated += (_, _) =>
         {
+            _host.TakeSceneClicks(clicks);      // another tool window may have asked since
             int before = _plan?.Triangles.Count ?? -1;
             Recount();
             // The click that brought the window forward may be a click on Hide: when the count has just changed
@@ -61,7 +62,7 @@ public sealed partial class HideTrianglesWindow : Window
         {
             _host.SelectionChanged -= selection;
             _host.BridgeStateChanged -= bridge;
-            if (_host.SceneClickTaker == clicks) _host.SceneClickTaker = null;
+            _host.ReleaseSceneClicks(clicks);
             _host.ShowPickedTriangles([]);
         };
         OnSelectionChanged();

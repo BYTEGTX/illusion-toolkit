@@ -68,13 +68,21 @@ public sealed partial class CarWorkshopWindow : Window
         _marks = new CarStageMarks(editor.TargetStage);
         // The car in the view is part of the window: a click on it is offered here first.
         _clicks = Clicked;
-        editor.TargetStage.SceneClickTaker = _clicks;
-        Action sceneChanged = () => Dispatcher.BeginInvoke(Mark);
+        editor.TargetStage.TakeSceneClicks(_clicks);
+        Action sceneChanged = () => Dispatcher.BeginInvoke(() =>
+        {
+            // Another car came onto the stage: a place asked for the one before is not a place on this one.
+            if (_placeWindow != null && CarOnStage(_editor) is { } now && !string.Equals(now, _car, StringComparison.OrdinalIgnoreCase))
+            {
+                _placeWindow.Close();
+            }
+            Mark();
+        });
         editor.TargetStage.SceneChanged += sceneChanged;
         Closed += (_, _) =>
         {
             editor.TargetStage.SceneChanged -= sceneChanged;
-            if (editor.TargetStage.SceneClickTaker == _clicks) editor.TargetStage.SceneClickTaker = null;
+            editor.TargetStage.ReleaseSceneClicks(_clicks);
             _placeWindow?.Close();
             _viewKept?.Stop();
             _marks.Dispose();
@@ -83,7 +91,11 @@ public sealed partial class CarWorkshopWindow : Window
         WinterReference.ItemsSource = shipped;
         CheckReference.ItemsSource = shipped;
         Open(car);
-        Activated += (_, _) => FollowStage();
+        Activated += (_, _) =>
+        {
+            editor.TargetStage.TakeSceneClicks(_clicks);        // another tool window may have asked since
+            FollowStage();
+        };
     }
 
     /// <summary>The summer archive of the car on a resource editor's stage, or null when what it holds is not a
@@ -137,7 +149,23 @@ public sealed partial class CarWorkshopWindow : Window
             Close();
             return;
         }
-        if (!string.Equals(staged, _car, StringComparison.OrdinalIgnoreCase)) Open(staged);
+        if (string.Equals(staged, _car, StringComparison.OrdinalIgnoreCase)) return;
+        _placeWindow?.Close();      // it was asking for a place on the car before
+        Open(staged);
+    }
+
+    // The place window stays open while the stage is worked with, and this window hears of another car only
+    // when it comes forward: what was asked for one car is not written into the car it no longer shows.
+    private bool StillOnStage()
+    {
+        if (string.Equals(CarOnStage(_editor), _car, StringComparison.OrdinalIgnoreCase)) return true;
+        NotDone($"The place was asked for {_name}, and another car is on the stage now. Nothing was written.");
+        Dispatcher.BeginInvoke(() =>
+        {
+            _placeWindow?.Close();
+            FollowStage();
+        });
+        return false;
     }
 
     private void Page_Checked(object sender, RoutedEventArgs e)
@@ -626,7 +654,7 @@ public sealed partial class CarWorkshopWindow : Window
 
     private bool AddBone(CarLightWindow window)
     {
-        if (!MayWrite()) return false;
+        if (!StillOnStage() || !MayWrite()) return false;
         string? refused = Run(() => _workshop.CarBoneAdd(_car, window.Bone, window.Part, window.At.X, window.At.Y, window.At.Z, window.Reach,
             out CarBoneInfo? made) is { } no ? (no, null) : (null, made), out CarBoneInfo? bone);
         if (refused != null)
@@ -643,7 +671,7 @@ public sealed partial class CarWorkshopWindow : Window
 
     private bool AddBeacon(CarLightWindow window)
     {
-        if (!MayWrite()) return false;
+        if (!StillOnStage() || !MayWrite()) return false;
         string? refused = Run(() => _workshop.CarBeacon(_car, window.At.X, window.At.Y, window.At.Z, window.Part, window.Reach,
             out CarBeaconInfo? made) is { } no ? (no, null) : (null, made), out CarBeaconInfo? beacon);
         if (refused != null)
