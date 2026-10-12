@@ -382,4 +382,222 @@ public sealed class CarTools
             return ToolResult.Fail(ex);
         }
     }
+
+    // ---- what Blender never sees. A push carries positions, normals, the first UV set and the skin; everything
+    // else a vertex holds is taken from the source mesh's nearest vertex, and on NEW geometry that is wrong in ways
+    // only the game shows. These three are run after the LAST save of a build, before car_winter and the build.
+
+    [McpServerTool(Name = "car_lamp_ids")]
+    [Description("Give the GLASS of a car's lamps the lamp ids the game lights it by - run it after the LAST save of a build (it writes the working copy's vertex buffers; a later push from Blender undoes it for the vertices it rebuilds). Every vertex of a car's body carries a damage group whose low byte says which of the car's lights the vertex glows with: head lamp 0x30, left indicator 0x31, right 0x32, brake 0x33 (0x34 left / 0x35 right on a lamp that is brake and indicator in one), reversing 0x36, taxi sign 0x37, number plate 0x38 and its digits 0x39..0x3E. Blender does not show that channel, and new glass takes it from the nearest old vertex: brake lamps that glow as reversing lamps, lamps lit with the plate. This sets the id on every vertex whose heaviest bone carries a light (by the light's kind and side - car_lights), and on the vertices of any bone named in 'ids' - glass kept on a bone that has no light of its own. Only the low byte changes. Refused while the resource editor has the car with unsaved edits or in a Blender session; the stage is loaded again afterwards. Run car_winter after it, so the winter twin gets the same.")]
+    public static async Task<string> CarLampIds(
+        ICarWorkshop workshop,
+        IUiThreadMarshal ui,
+        [Description("The car: its archive name under pc\\sds\\cars, or a full path to an .sds.")] string car,
+        [Description("Glass on bones that carry no light: 'bone=30, other bone=33' (the id in hex, with or without 0x). Default: none - only the bones of the car's lights.")] string? ids = null,
+        [Description("True: say what would change, write nothing. Default false.")] bool dry = false)
+    {
+        try
+        {
+            var named = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (string pair in (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                int cut = pair.LastIndexOf('=');
+                string hex = cut > 0 ? pair[(cut + 1)..].Trim() : "";
+                if (hex.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) hex = hex[2..];
+                if (cut <= 0 || !int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out int id) || id is < 0 or > 0xFF)
+                {
+                    return ToolResult.Invalid($"ids is 'bone=hex' pairs separated by commas, each id one byte; not understood: '{pair}'");
+                }
+                named[pair[..cut].Trim()] = id;
+            }
+            if (await ui.RunAsync(() => dry ? workshop.StageUnsaved(car) : workshop.StageBusy(car)) is { } busy) return ToolResult.Invalid(busy);
+            CarLampIdsInfo? result = null;
+            string? refused = await ui.RunAsync(() => workshop.CarLampIds(car, named, dry, out result));
+            if (refused != null) return ToolResult.Invalid(refused);
+            return ToolResult.Json(new { success = true, reloaded = result!.Written && await ui.RunAsync(() => workshop.Landed(car)), result });
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
+
+    [McpServerTool(Name = "car_glass")]
+    [Description("Lay the picture of BROKEN GLASS anew over each pane of a car - run it after the LAST save of a build, with car_lamp_ids. A car's glass has two sets of texture coordinates: the first lays the pane's dirt, the SECOND the picture of a broken pane (shards round a hole), and on a shipped car that one runs across each pane whatever its size (edge to edge on the large ones). Blender shows only the first; new glass takes the second from the nearest point of the source car's glass, so a pane that is larger than the source's, or stands elsewhere, reads the old pane's edge over everything beyond it - once broken, its cracks run as long streaks. This lays the second set over every pane (one connected piece of a material drawn with the broken-glass picture, or with 'glass' in its name; a far level's glass that goes round the whole cabin is parted by which way it looks) flat onto the pane's own plane, upright, edge to edge - a shipped car's own panes too, so run it on a car whose glass is new. Refused while the resource editor has the car with unsaved edits or in a Blender session; the stage is loaded again afterwards. Run car_winter after it.")]
+    public static async Task<string> CarGlass(
+        ICarWorkshop workshop,
+        IUiThreadMarshal ui,
+        [Description("The car: its archive name under pc\\sds\\cars, or a full path to an .sds.")] string car,
+        [Description("True: say what would change, write nothing. Default false.")] bool dry = false)
+    {
+        try
+        {
+            if (await ui.RunAsync(() => dry ? workshop.StageUnsaved(car) : workshop.StageBusy(car)) is { } busy) return ToolResult.Invalid(busy);
+            CarGlassInfo? result = null;
+            string? refused = await ui.RunAsync(() => workshop.CarGlass(car, dry, out result));
+            if (refused != null) return ToolResult.Invalid(refused);
+            return ToolResult.Json(new { success = true, reloaded = result!.Written && await ui.RunAsync(() => workshop.Landed(car)), result });
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
+
+    [McpServerTool(Name = "car_paint_mask")]
+    [Description("Which of a car's TWO PAINTS each piece of its body takes. The game paints a car in two colours, and where the second one goes is in no texture: it is the first colour of the paint's vertices - (255, 0, 0, 255) the first paint, (0, 255, 0, 255) the second, which on a shipped coupe is the cabin's top: pillars and roof, down to the foot of the glass. Blender does not show that channel and new vertices take it from the nearest old one, so a new roof shows its second paint in patches the size of its faces. With no 'line' this only reads the mask ('now': how many vertices of each paint, and the box they stand in). With a line it is WRITTEN anew over the whole paint - run it after the LAST save of a build: the second paint on what lies ABOVE the line drawn along the car's side (points 'y:z', along the car and up), between 'from' and 'to' along the car; the first on everything else. A triangle is judged by its middle, and a vertex takes the second paint only when every painted triangle it is a corner of does: where the mesh has its vertices doubled along the line the two paints meet in a hard line ('blended' 0), elsewhere they blend across one row of faces - split those edges in Blender before the push for a hard line. Refused while the resource editor has the car with unsaved edits or in a Blender session; the stage is loaded again afterwards. Run car_winter after it.")]
+    public static async Task<string> CarPaintMask(
+        ICarWorkshop workshop,
+        IUiThreadMarshal ui,
+        [Description("The car: its archive name under pc\\sds\\cars, or a full path to an .sds.")] string car,
+        [Description("The line the second paint lies above, along the car's side: 'y:z y:z ...' in metres - e.g. the foot of the cabin's glass, one point a station. Default: none - the mask is only read.")] string? line = null,
+        [Description("Where along the car (y, metres) the second paint begins. Required with a line.")] double? from = null,
+        [Description("Where along the car (y, metres) it ends. Required with a line.")] double? to = null,
+        [Description("The paint's materials, separated by commas. Default: the ones the car's PREFAB paints in the car's colour (car_materials: flags 1) - the body's paint and the far level's.")] string? materials = null,
+        [Description("True: say what a line would change, write nothing. Default false.")] bool dry = false)
+    {
+        try
+        {
+            var points = new List<double[]>();
+            foreach (string point in (line ?? "").Split([' ', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                string[] yz = point.Split(':');
+                if (yz.Length != 2
+                    || !double.TryParse(yz[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double y)
+                    || !double.TryParse(yz[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double z))
+                {
+                    return ToolResult.Invalid($"line is points 'y:z' separated by spaces; not understood: '{point}'");
+                }
+                points.Add([y, z]);
+            }
+            string[] names = [.. (materials ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+            bool writes = points.Count > 0 && !dry;
+            if (await ui.RunAsync(() => writes ? workshop.StageBusy(car) : workshop.StageUnsaved(car)) is { } busy) return ToolResult.Invalid(busy);
+            CarPaintMaskInfo? result = null;
+            string? refused = await ui.RunAsync(() => workshop.CarPaintMask(car, names, from, to, points, dry, out result));
+            if (refused != null) return ToolResult.Invalid(refused);
+            return ToolResult.Json(new { success = true, reloaded = result!.Written && await ui.RunAsync(() => workshop.Landed(car)), result });
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
+
+    // ---- the rig and the PREFAB
+
+    [McpServerTool(Name = "car_exhausts")]
+    [Description("The points a car's EXHAUST smokes from. The smoke does not rise from a point because of its name: the car's PREFAB LISTS the points, by the hash of each one's name - one on a car with one pipe ('exhaust_out'), two on a car with a pipe each side ('exhaust_outL', 'exhaust_outR'), besides the turbo's. With 'points' the list is written (the names of points the car has, separated by commas); without, it is read. A point that is renamed, or a second one made with car_point_copy, smokes only once it is listed here - a renamed point alone gives no smoke at all. Writing is refused while the resource editor has the car with unsaved edits or in a Blender session; the stage is loaded again afterwards.")]
+    public static async Task<string> CarExhausts(
+        ICarWorkshop workshop,
+        IUiThreadMarshal ui,
+        [Description("The car: its archive name under pc\\sds\\cars, or a full path to an .sds.")] string car,
+        [Description("The points to list, by name, separated by commas - all of them, in the order the PREFAB should have them. Default: none - the list is only read.")] string? points = null)
+    {
+        try
+        {
+            string[]? asked = string.IsNullOrWhiteSpace(points) ? null : [.. points.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+            if (await ui.RunAsync(() => asked == null ? workshop.StageUnsaved(car) : workshop.StageBusy(car)) is { } busy) return ToolResult.Invalid(busy);
+            IReadOnlyList<string> now = [];
+            string? refused = await ui.RunAsync(() => workshop.CarExhausts(car, asked, out now));
+            if (refused != null) return ToolResult.Invalid(refused);
+            return ToolResult.Json(new { success = true, written = asked != null, reloaded = asked != null && await ui.RunAsync(() => workshop.Landed(car)), points = now });
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
+
+    [McpServerTool(Name = "car_point_copy")]
+    [Description("Give a car one more POINT like one it has: a frame with no geometry that the game looks up by its name (where smoke rises, where a passenger sits). The copy stands where the original does and hangs on the same parents and the same bone - move it afterwards (object_move in the resource editor). What it is for: a second exhaust pipe needs a second smoke point (copy 'exhaust_out', then car_exhausts). Refused while the resource editor has the car with unsaved edits or in a Blender session; the stage is loaded again afterwards.")]
+    public static async Task<string> CarPointCopy(
+        ICarWorkshop workshop,
+        IUiThreadMarshal ui,
+        [Description("The car: its archive name under pc\\sds\\cars, or a full path to an .sds.")] string car,
+        [Description("The point to copy, by its frame's name.")] string like,
+        [Description("The copy's name - one the car does not have yet.")] string name)
+    {
+        try
+        {
+            if (await ui.RunAsync(() => workshop.StageBusy(car)) is { } busy) return ToolResult.Invalid(busy);
+            string? refused = await ui.RunAsync(() => workshop.CarPointCopy(car, like, name));
+            if (refused != null) return ToolResult.Invalid(refused);
+            return ToolResult.Json(new { success = true, point = name.Trim(), like = like.Trim(), reloaded = await ui.RunAsync(() => workshop.Landed(car)) });
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
+
+    [McpServerTool(Name = "car_wheels")]
+    [Description("Where a car's WHEELS stand, axle by axle - and, with 'front' or 'rear', the wheels of that axle moved outwards by so many metres (a wider track; negative: inwards). A wheel is not a bone: the PREFAB gives each half-axle a brake drum's bone and the wheel's place ON that drum; the track is the drum bones' spread plus that place, and this writes that place only. The move is BY that much from where the wheel stands - read the wheels first ('at' is where each stands in the model), and a call made twice widens twice; half a metre at most. Seen in the game: a rear axle of the swinging-arm kind (most cars' rear) keeps its wheels AT the drum on every shipped car, and wheels moved off it SHAKE - widen the front freely, the rear only when the lines show a shipped offset there. Writing is refused while the resource editor has the car with unsaved edits or in a Blender session; the stage is loaded again afterwards.")]
+    public static async Task<string> CarWheels(
+        ICarWorkshop workshop,
+        IUiThreadMarshal ui,
+        [Description("The car: its archive name under pc\\sds\\cars, or a full path to an .sds.")] string car,
+        [Description("How far each front wheel moves outwards, metres. Default: not moved.")] double? front = null,
+        [Description("How far each rear wheel moves outwards, metres. Default: not moved.")] double? rear = null)
+    {
+        try
+        {
+            bool writes = (front ?? 0.0) != 0.0 || (rear ?? 0.0) != 0.0;
+            if (await ui.RunAsync(() => writes ? workshop.StageBusy(car) : workshop.StageUnsaved(car)) is { } busy) return ToolResult.Invalid(busy);
+            IReadOnlyList<CarWheelInfo> wheels = [];
+            bool written = false;
+            string? refused = await ui.RunAsync(() => workshop.CarWheels(car, front, rear, out wheels, out written));
+            if (refused != null) return ToolResult.Invalid(refused);
+            return ToolResult.Json(new { success = true, written, reloaded = written && await ui.RunAsync(() => workshop.Landed(car)), wheels });
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
+
+    [McpServerTool(Name = "car_bone_move")]
+    [Description("Shift a BONE of a car's rig by an offset in the model's space. The frames hung on the bone (points, collision volumes) go with it; the BONES that hang on it stay where they stand; the geometry skinned to it is NOT moved: move it by the same offset in Blender, or it stays where it was and turns about the new place. For a bone whose place matters by itself: a lamp's bone (the flare and the cast light stand at the bone), the steering wheel's when a cabin is raised. When the bone is a movable part of the car, the PREFAB's own record of where that part hangs moves with it - and even so, DO NOT use this on a lid or a door: with the bone and the record both moved, a closed boot lid was seen sunk into the body in the game; keep a lid's hinge where the source car has it and shape the lid to it. The move is BY the offset from where the bone stands (a call made twice moves twice; 'at' in the result is where it stands now, 'hingeRecords' how many PREFAB records moved with it). Refused while the resource editor has the car with unsaved edits or in a Blender session; the stage is loaded again afterwards.")]
+    public static async Task<string> CarBoneMove(
+        ICarWorkshop workshop,
+        IUiThreadMarshal ui,
+        [Description("The car: its archive name under pc\\sds\\cars, or a full path to an .sds.")] string car,
+        [Description("The bone, by name (car_lights lists the rig's bones).")] string bone,
+        [Description("The move across the car, metres (model space).")] double dx,
+        [Description("The move along the car, metres.")] double dy,
+        [Description("The move up, metres.")] double dz)
+    {
+        try
+        {
+            if (await ui.RunAsync(() => workshop.StageBusy(car)) is { } busy) return ToolResult.Invalid(busy);
+            CarBoneMoveInfo? result = null;
+            string? refused = await ui.RunAsync(() => workshop.CarBoneMove(car, bone, dx, dy, dz, out result));
+            if (refused != null) return ToolResult.Invalid(refused);
+            return ToolResult.Json(new { success = true, moved = new[] { dx, dy, dz }, reloaded = await ui.RunAsync(() => workshop.Landed(car)), result });
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
+
+    [McpServerTool(Name = "car_kind")]
+    [Description("What KIND of car the game takes a car for: its row in vehicles.tbl (tables.sds) - and, with 'like', that row given the two flag columns of another car's. Nothing in a car's own archive makes it a police car: a police car's tuning data differs from its civil twin's only in the siren's sound, its PREFAB only in the beacon's light; its ROW differs (smith_200_p_pha 0x80001000 / 0x00030000 against smith_200_pha 0x80200800 / 0x00000007). With a police car's flags a car has NO RADIO and the keys that change the station switch its SIREN - what an ambulance or a fire car wants, besides car_beacon, the siren's fields in its tuning (SirenSndCategory1 27, SirenSndId1 128) and the siren's sample in its archive. It is the row of the car you name: a car made with car_clone has one of its own; a STOCK car's row is the game's, and changing it changes that car for the single player. Id, name, title, class and price stay. Writes the table in the working copy of tables.sds (that archive goes on the build list - build it for the single player); a car streamed to Mafia II Online carries its row inside its own archive, so run car_export_m2o again afterwards. Without 'like' the row is only read.")]
+    public static async Task<string> CarKind(
+        ICarWorkshop workshop,
+        IUiThreadMarshal ui,
+        [Description("The car, by model or archive name ('shubert_ambulance').")] string car,
+        [Description("The car whose kind it takes, the same way ('smith_200_p_pha' for a police car's). Default: none - the row is only read.")] string? like = null)
+    {
+        try
+        {
+            CarKindInfo? result = null;
+            string? refused = await ui.RunAsync(() => workshop.CarKind(car, like, out result));
+            return refused != null ? ToolResult.Invalid(refused) : ToolResult.Json(new { success = true, result });
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
 }

@@ -83,7 +83,14 @@ public static partial class CarM2oExport
     /// <paramref name="output"/> the folder is <c>&lt;game&gt;\_illusion_export\m2o\&lt;resource&gt;</c>.
     /// Nothing of the game is written.
     /// </summary>
-    public static CarM2oExportResult? Export(string car, string? output, string? resource, out string? refusal)
+    public static CarM2oExportResult? Export(string car, string? output, string? resource, out string? refusal) =>
+        Export(car, output, resource, null, out refusal);
+
+    /// <inheritdoc cref="Export(string, string?, string?, out string?)"/>
+    /// <param name="madeFrom">The stock car this one was made from, for a car whose working copy does not say
+    /// (<see cref="CarCloner.ProvenanceFile"/>: a car cloned before the toolkit wrote that note, or by hand). It is
+    /// written down there, so it need be said once.</param>
+    public static CarM2oExportResult? Export(string car, string? output, string? resource, string? madeFrom, out string? refusal)
     {
         ArgumentNullException.ThrowIfNull(car);
         if (!MafiaEnvironment.IsInitialized)
@@ -120,6 +127,36 @@ public static partial class CarM2oExport
         MaterialVersion version = materials.Libraries.Values.First().Version;
 
         string? basedOn = CarCloner.SourceOf(MafiaEnvironment.ExtractedDir(archive));
+        string? remember = null;            // a source the caller named, to be written down once the export has succeeded
+        if (!string.IsNullOrWhiteSpace(madeFrom))
+        {
+            // the caller knows what the working copy does not say: checked against the table, then written down
+            string vehiclesTable = tables.Exists ? Path.Combine(SdsMeshLoader.EnsureExtracted(tables), "tables", "vehicles.tbl") : "";
+            GameTable? known = File.Exists(vehiclesTable) ? GameTable.Load(vehiclesTable) : null;
+            int sourceRow = -1;
+            for (int r = 0; known != null && r < known.RowCount && sourceRow < 0; r++)
+            {
+                if (known.Cell(r, VehicleNameColumn) is string listedName && listedName.Equals(madeFrom.Trim(), StringComparison.OrdinalIgnoreCase)) sourceRow = r;
+            }
+            if (sourceRow < 0)
+            {
+                refusal = $"vehicles.tbl has no car named '{madeFrom.Trim()}' - madeFrom is the stock car this one was made from";
+                return null;
+            }
+            string source = (string)known!.Cell(sourceRow, VehicleNameColumn);
+            if (source.Equals(stem, StringComparison.OrdinalIgnoreCase))
+            {
+                refusal = $"a car is not made from itself: madeFrom is the STOCK car {stem} was cloned from (a stock car needs none - it keeps the game's row)";
+                return null;
+            }
+            if (basedOn != null && !basedOn.Equals(source, StringComparison.OrdinalIgnoreCase))
+            {
+                refusal = $"the car's working copy says it was made from {basedOn}, not {source}";
+                return null;
+            }
+            remember = basedOn == null ? source : null;
+            basedOn = source;
+        }
         var basedOnArchive = basedOn == null ? null : new FileInfo(Path.Combine(sds, "cars", basedOn.ToLowerInvariant() + ".sds"));
         resource ??= DefaultResource(stem);
         output ??= Path.Combine(MafiaEnvironment.GameRoot, "_illusion_export", "m2o", resource);
@@ -133,7 +170,13 @@ public static partial class CarM2oExport
             materials.FindByHash,
             StockMaterials(materials),
             version);
-        return ExportFrom(sources, output, resource, out refusal);
+        CarM2oExportResult? exported = ExportFrom(sources, output, resource, out refusal);
+        if (exported != null && remember != null)
+        {
+            File.WriteAllText(Path.Combine(SdsMeshLoader.EnsureExtracted(archive), CarCloner.ProvenanceFile),
+                System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string> { ["source"] = remember, ["model"] = stem }));
+        }
+        return exported;
     }
 
     /// <summary>
@@ -310,6 +353,13 @@ public static partial class CarM2oExport
         else if (sources.BasedOn != null)
         {
             notes.Add($"vehicles.tbl has no row for {model} — in the multiplayer it takes the game's first row (title, paint, flags)");
+        }
+        else if (row >= 0)
+        {
+            // Said, not passed over: a cloned car whose working copy lost (or never had) the note of its source was
+            // exported for days without its row, and ran in the multiplayer as the table's first car.
+            notes.Add($"the working copy of {model} does not say which car it was made from ({CarCloner.ProvenanceFile}), so its vehicles.tbl row does not travel. "
+                + "A stock car keeps the game's row anyway; a NEW car takes the game's first row in the multiplayer (title, paint, kind) - export it again with madeFrom");
         }
 
         // Everything is known; now the folder.

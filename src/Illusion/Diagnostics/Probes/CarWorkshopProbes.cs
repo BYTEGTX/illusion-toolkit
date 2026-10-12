@@ -20,6 +20,212 @@ namespace Illusion.Diagnostics.Probes;
 /// </summary>
 internal static class CarWorkshopProbes
 {
+    // The channels of a vertex that Blender does not show (lamp ids, the glass's second coordinates, the mask of the
+    // second paint), the car's kind, and the small writers of the rig and the PREFAB: each run on the scratch copy.
+    private static void Unseen(string car, string scratch, Action<string, bool, string> check)
+    {
+        void Check(string name, bool ok, string detail = "") => check(name, ok, detail);
+
+        // lamp ids
+        string? idsRefused = CarLampIds.ApplyIn(scratch, car, null, write: false, out CarLampIds.Report? ids);
+        Check("a shipped car's lamp glass carries the ids its lights ask for: nothing would change", idsRefused == null && ids is { Changed: 0, Lamps.Count: > 0 },
+            idsRefused ?? $"{ids?.Changed} of {ids?.Lamps.Sum(l => l.Vertices)} vertices on {ids?.Lamps.Count} lamps");
+        if (ids is { Lamps.Count: > 0 })
+        {
+            // every vertex pool of the copy, to hold against what a change and its undoing leave
+            Dictionary<string, byte[]> Pools() => Directory.GetFiles(scratch, "VertexBufferPool_*").ToDictionary(f => Path.GetFileName(f)!, File.ReadAllBytes);
+            Dictionary<string, byte[]> poolsWere = Pools();
+            CarLampIds.Lamp lamp = ids.Lamps[0];
+            int other = lamp.Id == 0x3E ? 0x3D : 0x3E;
+            var named = new Dictionary<string, int> { [lamp.Bone] = other };
+            Check("an id named for a bone is written on that bone's vertices",
+                CarLampIds.ApplyIn(scratch, car, named, write: true, out CarLampIds.Report? set) == null && set is { PoolFilesWritten: > 0 }
+                && set.Lamps.Where(l => l.Bone == lamp.Bone).Sum(l => l.Changed) == set.Changed && set.Changed > 0, $"{set?.Changed} vertices");
+            Check("…and read back from the written buffers it is what would change back, to the light's own id",
+                CarLampIds.ApplyIn(scratch, car, null, write: true, out CarLampIds.Report? back) == null && back!.Changed == set!.Changed
+                && CarLampIds.ApplyIn(scratch, car, null, write: false, out CarLampIds.Report? clean) == null && clean!.Changed == 0, $"{back?.Changed} back");
+            Dictionary<string, byte[]> poolsNow = Pools();
+            Check("…and the vertex buffers are byte for byte what they were: nothing but the id was touched",
+                poolsNow.Count == poolsWere.Count && poolsWere.All(f => poolsNow.TryGetValue(f.Key, out byte[]? now) && now.AsSpan().SequenceEqual(f.Value)), $"{poolsWere.Count} pool file(s)");
+            Check("a bone the rig does not have, and an id past a byte, are refused",
+                CarLampIds.ApplyIn(scratch, car, new Dictionary<string, int> { ["no such bone"] = 0x30 }, write: false, out _) != null
+                && CarLampIds.ApplyIn(scratch, car, new Dictionary<string, int> { [lamp.Bone] = 0x130 }, write: false, out _) != null);
+        }
+
+        // the glass's second coordinates
+        string? surveyRefused = CarGlassUv.SurveyIn(scratch, car, out IReadOnlyList<CarGlassUv.Pane> panesWere);
+        string? glassRefused = CarGlassUv.ApplyIn(scratch, car, write: true, out CarGlassUv.Report? glass);
+        Check("the broken-glass picture is laid over the car's panes", surveyRefused == null && glassRefused == null && glass is { Panes.Count: > 0 },
+            surveyRefused ?? glassRefused ?? $"{glass?.Panes.Count} panes, {glass?.Changed} vertices");
+        string? rereadRefused = CarGlassUv.SurveyIn(scratch, car, out IReadOnlyList<CarGlassUv.Pane> panes);
+        Check("the laid glass is read back", rereadRefused == null && panes.Count == panesWere.Count, rereadRefused ?? $"{panes.Count} / {panesWere.Count}");
+        if (glassRefused == null && rereadRefused == null && surveyRefused == null && panes.Count == panesWere.Count)
+        {
+            // (a pane as the survey has it - a material's vertices on one bone - may hold several panes; each of them runs
+            // edge to edge, so the bone's whole box does)
+            bool Whole(CarGlassUv.Pane p) => p.Sets.Count >= 2 && p.Sets[1].Low.X is > 0f and < 0.03f && p.Sets[1].Low.Y is > 0f and < 0.03f
+                && p.Sets[1].High.X is > 0.97f and < 1f && p.Sets[1].High.Y is > 0.97f and < 1f;
+            CarGlassUv.Pane? partial = panes.FirstOrDefault(p => p.Lod == 0 && !Whole(p));
+            Check("…each from edge to edge of the picture", panes.Any(p => p.Lod == 0) && partial == null,
+                partial == null ? $"{panes.Count(p => p.Lod == 0)} panes" : $"{partial.Bone}: {(partial.Sets.Count < 2 ? "no second set" : CarGlassUv.Text(partial.Sets[1].Low) + " .. " + CarGlassUv.Text(partial.Sets[1].High))}");
+            Check("…its places and its first coordinates (the dirt's) are what they were",
+                panes.Zip(panesWere).All(p => p.First.Bone == p.Second.Bone && p.First.Vertices == p.Second.Vertices && p.First.Low == p.Second.Low && p.First.High == p.Second.High
+                    && p.First.Sets[0].Low == p.Second.Sets[0].Low && p.First.Sets[0].High == p.Second.Sets[0].High));
+            Check("…and laid again nothing changes", CarGlassUv.ApplyIn(scratch, car, write: true, out CarGlassUv.Report? again) == null && again!.Changed == 0, $"{again?.Changed}");
+        }
+
+        // the mask of the second paint
+        CarMaterials.ReadIn(scratch, out CarMaterials.Sheet? listed);
+        string[] paints = [.. (listed?.Rows ?? []).Where(r => r.Flags == 1 && r.OnTheCar).Select(r => r.Material).Distinct()];
+        Check("the car's PREFAB names the paint its meshes are drawn with", paints.Length > 0, string.Join(", ", paints));
+        if (paints.Length > 0 && CarPaintMask.SurveyIn(scratch, car, 0, out IReadOnlyList<CarPaintMask.Patch> before) == null)
+        {
+            CarPaintMask.Patch[] mine = [.. before.Where(b => paints.Contains(b.Material) && b.Lod == 0)];
+            float low = mine.Min(b => b.Low.Z), high = mine.Max(b => b.High.Z), mid = (low + high) / 2f;
+            (float, float)[] line = [(-100f, mid), (100f, mid)];
+            string? maskRefused = CarPaintMask.ApplyIn(scratch, car, paints, -100f, 100f, line, write: true, out CarPaintMask.Report? mask);
+            Check("a mask is written: the second paint above a line, the first below", maskRefused == null
+                && mask!.Levels.Any(l => l.Lod == 0 && l.FirstVertices > 0 && l.SecondVertices > 0), maskRefused ?? string.Join("; ", mask!.Levels.Select(l => $"LOD {l.Lod} {l.FirstVertices}/{l.SecondVertices}")));
+            if (maskRefused == null && CarPaintMask.SurveyIn(scratch, car, 0, out IReadOnlyList<CarPaintMask.Patch> after) == null)
+            {
+                CarPaintMask.Patch[] now = [.. after.Where(b => paints.Contains(b.Material) && b.Lod == 0)];
+                Check("…read back: the paint carries the two paints' colours and no other", now.All(b => b.Colour is "255,0,0,255" or "0,255,0,255"),
+                    string.Join(", ", now.Select(b => b.Colour).Distinct()));
+                // (a vertex takes its paint from its triangles' middles, so it may stand a triangle's reach across the line)
+                float slack = (high - low) * 0.3f;
+                Check("…the second paint lies above the line and the first below it, within a triangle's reach",
+                    now.Where(b => b.Colour == "0,255,0,255").All(b => b.Low.Z >= mid - slack && b.High.Z > mid)
+                    && now.Where(b => b.Colour == "255,0,0,255").All(b => b.High.Z <= mid + slack && b.Low.Z < mid),
+                    string.Join("; ", now.Select(b => $"{(b.Colour == "0,255,0,255" ? "second" : "first")} z {b.Low.Z:0.00}..{b.High.Z:0.00}")) + $" (line {mid:0.00})");
+            }
+            Check("…and written again nothing changes", CarPaintMask.ApplyIn(scratch, car, paints, -100f, 100f, line, write: true, out CarPaintMask.Report? twice) == null
+                && twice!.Changed == 0, $"{twice?.Changed}");
+            Check("a line of one point, no material, and a material the car is not drawn with are refused or said",
+                CarPaintMask.ApplyIn(scratch, car, paints, -100f, 100f, [(0f, mid)], write: false, out _) != null
+                && CarPaintMask.ApplyIn(scratch, car, [], -100f, 100f, line, write: false, out _) != null
+                && CarPaintMask.ApplyIn(scratch, car, ["no_such_paint"], -100f, 100f, line, write: false, out CarPaintMask.Report? none) == null
+                && none!.Notes.Count > 0 && none.Changed == 0);
+        }
+
+        // the exhaust's points, a copied point
+        string? smokeRefused = CarLights.ExhaustsIn(scratch, out IReadOnlyList<string> smoke);
+        Check("the car's PREFAB lists the points its exhaust smokes from", smokeRefused == null && smoke.Count > 0, smokeRefused ?? string.Join(", ", smoke));
+        Check("…by names the car's frames have", smokeRefused != null || smoke.Count == 0 || !smoke[0].StartsWith("0x", StringComparison.Ordinal), smoke.FirstOrDefault() ?? "");
+        if (smokeRefused == null && smoke.Count > 0 && !smoke[0].StartsWith("0x", StringComparison.Ordinal))
+        {
+            const string Copy = "zz_probe_smoke";
+            Check("a point is copied under a new name", CarLights.CopyPointIn(scratch, smoke[0], Copy) == null);
+            Check("…a second copy under that name, and a copy of a frame the car has not, are refused",
+                CarLights.CopyPointIn(scratch, smoke[0], Copy) != null && CarLights.CopyPointIn(scratch, "no such frame", "zz_other") != null);
+            string[] wanted = [.. smoke, Copy, Copy];
+            Check("the list is written with the copy in it - once, though it was named twice",
+                CarLights.SetExhaustsIn(scratch, wanted) == null && CarLights.ExhaustsIn(scratch, out IReadOnlyList<string> listedNow) == null
+                && listedNow.SequenceEqual([.. smoke, Copy], StringComparer.OrdinalIgnoreCase), "");
+            Check("a point the car does not have is refused, and the list stays", CarLights.SetExhaustsIn(scratch, ["no such point"]) != null
+                && CarLights.ExhaustsIn(scratch, out IReadOnlyList<string> kept) == null && kept.Count == smoke.Count + 1);
+        }
+
+        // wheels
+        string? wheelsRefused = CarLights.WheelsIn(scratch, null, out IReadOnlyList<CarLights.Wheel> wheels);
+        Check("the car's wheels are read: a front pair and a rear pair on their brake drums", wheelsRefused == null && wheels.Count(w => w.Front) == 2 && wheels.Count(w => !w.Front) == 2,
+            wheelsRefused ?? $"{wheels.Count} wheels");
+        if (wheelsRefused == null && wheels.Count >= 4)
+        {
+            Check("the front wheels moved outwards stand that much further from the car's middle, the rear ones where they were",
+                CarLights.WheelsIn(scratch, (0.05f, 0f), out IReadOnlyList<CarLights.Wheel> wider, out bool wroteWider) == null && wroteWider
+                && wider.Zip(wheels).All(p => MathF.Abs(MathF.Abs(p.First.At.X) - MathF.Abs(p.Second.At.X) - (p.First.Front ? 0.05f : 0f)) < 1e-3f
+                    && MathF.Abs(p.First.At.Y - p.Second.At.Y) < 1e-3f && MathF.Abs(p.First.At.Z - p.Second.At.Z) < 1e-3f),
+                string.Join(", ", wider.Zip(wheels).Select(p => $"{MathF.Abs(p.First.At.X) - MathF.Abs(p.Second.At.X):0.000}")));
+            Check("…and moved back they stand where they did", CarLights.WheelsIn(scratch, (-0.05f, 0f), out IReadOnlyList<CarLights.Wheel> back2) == null
+                && back2.Zip(wheels).All(p => (p.First.OnDrum - p.Second.OnDrum).Length() < 1e-4f));
+            Check("a move of nought writes nothing, and a move past half a metre is refused",
+                CarLights.WheelsIn(scratch, (0f, 0f), out _, out bool wroteNought) == null && !wroteNought
+                && CarLights.WheelsIn(scratch, (5f, 0f), out _) != null && CarLights.WheelsIn(scratch, (float.PositiveInfinity, 0f), out _) != null);
+        }
+
+        // a bone moved
+        (string[] Names, byte[] Parents, System.Numerics.Vector3[] At)? Rig()
+        {
+            if (Illusion.Assets.Sds.SdsMeshLoader.OpenScene(scratch).FrameResource is not { FrameObjects: not null } frame) return null;
+            Illusion.Formats.Frames.ObjectTypes.FrameObjectModel? model = frame.FrameObjects.Values.OfType<Illusion.Formats.Frames.ObjectTypes.FrameObjectModel>()
+                .OrderByDescending(m => m.GetSkeletonObject().BoneNames?.Length ?? 0).FirstOrDefault();
+            if (model == null) return null;
+            string[] names = [.. (model.GetSkeletonObject().BoneNames ?? []).Select(n => n.ToString() ?? "")];
+            return (names, model.GetSkeletonHierarchyObject().ParentIndices ?? [], [.. Enumerable.Range(0, names.Length).Select(i => model.GetJointWorldTransform(i).Translation)]);
+        }
+        var move = new System.Numerics.Vector3(0.03f, -0.02f, 0.01f);
+        bool lit = CarLights.ReadIn(scratch, out CarLights.Sheet? rig) == null && rig!.Lights.Count > 0;
+        Check("the car has a lamp's bone to move", lit && Rig() != null);
+        if (lit && Rig() is { } rigWas)
+        {
+            string bone = rig!.Lights[0].Bone;
+            int index = Array.IndexOf(rigWas.Names, bone);
+            Check("a lamp's bone is moved by an offset in the model's space, and says where it stands",
+                index >= 0 && CarLights.MoveBoneIn(scratch, bone, move, out int noHinge, out System.Numerics.Vector3 said) == null && noHinge == 0
+                && Rig() is { } after && (after.At[index] - rigWas.At[index] - move).Length() < 1e-3f && (said - after.At[index]).Length() < 1e-3f, bone);
+            Check("a bone the rig does not have, and a move past three metres, are refused",
+                CarLights.MoveBoneIn(scratch, "no such bone", move) != null && CarLights.MoveBoneIn(scratch, bone, new System.Numerics.Vector3(0f, 30f, 0f)) != null);
+
+            // a bone other bones hang on: it moves, they stay
+            rigWas = Rig()!.Value;
+            int parent = Enumerable.Range(1, rigWas.Names.Length - 1).FirstOrDefault(i => rigWas.Parents.Skip(1).Contains((byte)i) && CarLights.MoveBoneIn(scratch, rigWas.Names[i], move) == null, -1);
+            if (parent > 0 && Rig() is { } hung)
+            {
+                int[] children = [.. Enumerable.Range(1, rigWas.Names.Length - 1).Where(c => rigWas.Parents[c] == parent)];
+                Check("a bone other bones hang on is moved, and they stay where they stood", (hung.At[parent] - rigWas.At[parent] - move).Length() < 1e-3f
+                    && children.All(c => (hung.At[c] - rigWas.At[c]).Length() < 1e-3f), $"{rigWas.Names[parent]}: {children.Length} bone(s) on it");
+            }
+            else
+            {
+                Check("a bone other bones hang on is moved, and they stay where they stood", false, "no such bone could be moved");
+            }
+
+            // a movable part: the PREFAB's record of its hinge moves with the bone
+            string? part = new[] { "coverF", "coverB", "doorFL", "doorFR" }.FirstOrDefault(b => rigWas.Names.Contains(b));
+            byte[] prefabWas = File.ReadAllBytes(Illusion.Formats.Archive.SdsManifest.Load(scratch).GetFiles("PREFAB")[0]);
+            string prefabFile = Illusion.Formats.Archive.SdsManifest.Load(scratch).GetFiles("PREFAB")[0];
+            int Differ() { byte[] now = File.ReadAllBytes(prefabFile); return now.Length != prefabWas.Length ? -1 : now.Zip(prefabWas).Count(p => p.First != p.Second); }
+            string? partRefused = part == null ? "the car has no lid or door bone" : CarLights.MoveBoneIn(scratch, part, move, out int hinges, out _);
+            int moved = Differ();
+            Check("a movable part's bone is moved with the PREFAB's record of its hinge", partRefused == null && moved > 0, partRefused ?? $"{part}: {moved} byte(s) of the PREFAB differ");
+            string? backRefused = part == null ? "-" : CarLights.MoveBoneIn(scratch, part, -move, out int hingesBack, out _);
+            // (a float moved out and back may differ in its last bit: a handful of bytes, not a record left behind)
+            int left = Differ();
+            Check("…and moved back the PREFAB is what it was, to a float's last bit", backRefused == null && left >= 0 && left <= moved / 4, backRefused ?? $"{left} byte(s) differ after the way back, {moved} after the way out");
+        }
+
+        // the car's kind: on a copy of the table
+        var tables = new FileInfo(Path.Combine(MafiaEnvironment.PcFolder, "sds", "tables", "tables.sds"));
+        string shipped = tables.Exists ? Path.Combine(Illusion.Assets.Sds.SdsMeshLoader.EnsureExtracted(tables), "tables", "vehicles.tbl") : "";
+        Check("the working copy of tables.sds has vehicles.tbl", File.Exists(shipped), shipped);
+        if (File.Exists(shipped))
+        {
+            string table = Path.Combine(Path.GetDirectoryName(scratch)!, "vehicles_probe.tbl");
+            File.Copy(shipped, table, overwrite: true);
+            const string Police = "Smith_200_p_pha", Civil = "smith_200_PHA";
+            Check("a car's row is read, whatever the case of its name", CarKind.Read(table, Civil, out CarKind.Row? civil) == null && civil is { Name: "Smith_200_pha" }, civil?.Name ?? "");
+            Check("a police car's row differs from its civil twin's in both flag columns", CarKind.Read(table, Police, out CarKind.Row? police) == null && civil != null
+                && police!.Flags != civil.Flags && police.MoreFlags != civil.MoreFlags, $"0x{police?.Flags:X} 0x{police?.MoreFlags:X} / 0x{civil?.Flags:X} 0x{civil?.MoreFlags:X}");
+            Check("a car takes another's kind: both flag columns, and nothing else of its row",
+                CarKind.Like(table, Civil, Police, out CarKind.Row? rowBefore, out CarKind.Row? rowAfter, out bool changed) == null && changed
+                && rowAfter!.Flags == police!.Flags && rowAfter.MoreFlags == police.MoreFlags && rowAfter.Id == rowBefore!.Id && rowAfter.Name == rowBefore.Name
+                && rowAfter.CopReport == rowBefore.CopReport);
+            Check("…read back from the written table, and asked again nothing is written",
+                CarKind.Read(table, Civil, out CarKind.Row? reread) == null && reread!.Flags == police!.Flags
+                && CarKind.Like(table, Civil, Police, out _, out _, out bool again2) == null && !again2);
+            Check("a car the table does not have is refused", CarKind.Read(table, "no_such_car", out _) != null && CarKind.Like(table, Civil, "no_such_car", out _, out _, out _) != null);
+            // every other cell of the table: as the shipped one has it
+            var mine = Illusion.Formats.ResourceFormats.GameTable.Load(table);
+            var theirs = Illusion.Formats.ResourceFormats.GameTable.Load(shipped);
+            int rowOfCivil = theirs.FindRow(2, "Smith_200_pha"), differ = 0;
+            for (int r = 0; r < theirs.RowCount && mine.RowCount == theirs.RowCount; r++)
+                for (int c = 0; c < theirs.ColumnCount; c++)
+                    if (!Equals(mine.Cell(r, c), theirs.Cell(r, c)) && !(r == rowOfCivil && c is 1 or 9)) differ++;
+            Check("…and no other cell of the table is changed", mine.RowCount == theirs.RowCount && mine.ColumnCount == theirs.ColumnCount && differ == 0, $"{differ} cell(s)");
+            File.Delete(table);
+        }
+    }
+
     // A working copy, copied whole into a scratch folder (replacing what was there).
     private static void Mirror(string from, string to)
     {
@@ -254,6 +460,19 @@ internal static class CarWorkshopProbes
                         && rowsAdded > 0 && listed2!.Rows.Any(r => r.Hash == mine && r.Flags == 1), $"{rowsAdded} rows");
                     Check("…and they are taken out again", CarMaterials.DropIn(scratch, mine, out int rowsGone, out CarMaterials.Sheet? listed3) == null
                         && rowsGone == rowsAdded && listed3!.Rows.All(r => r.Hash != mine));
+
+                    // The car drawn with another material in place of its paint: the slots that named the paint
+                    // name the other, no slot besides, and put back the scene's file is the one it was.
+                    string sceneFile = Illusion.Formats.Archive.SdsManifest.Load(scratch).GetFiles("FrameResource")[0];
+                    byte[] sceneWas = File.ReadAllBytes(sceneFile);
+                    Check("the car is drawn with a material in place of its paint: every slot that named the paint",
+                        CarMaterials.UseIn(scratch, mine, theirs, out int slotsMoved, out CarMaterials.Sheet? worn) == null && slotsMoved > 0
+                        && worn!.Rows.Any(r => r.Hash == theirs && !r.OnTheCar) && CarMaterials.UseIn(scratch, mine, theirs, out int none, out _) == null && none == 0,
+                        $"{slotsMoved} slots");
+                    Check("…and back again the scene is byte for byte the one it was",
+                        CarMaterials.UseIn(scratch, theirs, mine, out int slotsBack, out _) == null && slotsBack == slotsMoved
+                        && File.ReadAllBytes(sceneFile).AsSpan().SequenceEqual(sceneWas), $"{slotsBack} slots back");
+                    Check("a material is not put in its own place", CarMaterials.UseIn(scratch, theirs, theirs, out _, out _) != null);
                 }
 
                 if (Car.ReadFrom(scratch) is { Body: { } bodyPart } read)
@@ -273,6 +492,10 @@ internal static class CarWorkshopProbes
                 {
                     sb.AppendLine($"({car}: the scratch copy does not read as a car with a body - the collision check is skipped)");
                 }
+
+                // ---- what Blender never sees, and the rig's and the PREFAB's smaller writers - on a fresh copy
+                Mirror(extracted, scratch);
+                Unseen(car, scratch, Check);
 
                 // ---- winter, whole: the scratch summer copy over a scratch winter copy, by the car's own pair
                 if (twin.Exists)

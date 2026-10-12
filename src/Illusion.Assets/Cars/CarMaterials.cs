@@ -156,6 +156,52 @@ public static class CarMaterials
         return null;
     }
 
+    /// <summary>
+    /// Draws the car with <paramref name="material"/> wherever its meshes name <paramref name="inPlaceOf"/>:
+    /// every slot of every level of detail that names the one is re-pointed at the other. No geometry and no
+    /// UV is touched. What the GAME does to the material is a separate matter - see <see cref="Adopt"/>.
+    /// </summary>
+    /// <param name="slots">How many slots were re-pointed; 0 when no mesh names <paramref name="inPlaceOf"/>.</param>
+    public static string? Use(FileInfo car, string material, string inPlaceOf, out int slots, out Sheet? sheet)
+    {
+        slots = 0;
+        sheet = null;
+        return Folder(car, out string extracted) ?? UseIn(extracted, material, inPlaceOf, out slots, out sheet);
+    }
+
+    /// <inheritdoc cref="Use(FileInfo, string, string, out int, out Sheet?)"/>
+    public static string? UseIn(string extracted, string material, string inPlaceOf, out int slots, out Sheet? sheet)
+    {
+        slots = 0;
+        sheet = null;
+        if (Open(extracted, out string label, out _, out PrefabFile? prefab, out HashSet<ulong> used, out Dictionary<ulong, string> textures) is { } refused) return refused;
+        if (Hash(material, out ulong mine) is { } noMaterial) return noMaterial;
+        if (Hash(inPlaceOf, out ulong theirs) is { } noOther) return noOther;
+        if (mine == theirs) return "the material and the one it takes the place of are the same";
+        IReadOnlyList<string> scenes = SdsManifest.Load(extracted).GetFiles("FrameResource");
+        if (scenes.Count == 0 || SdsMeshLoader.OpenScene(extracted).FrameResource is not { FrameObjects: not null } frame) return $"{label} has no scene";
+        foreach (FrameObjectSingleMesh mesh in frame.FrameObjects.Values.OfType<FrameObjectSingleMesh>())
+        {
+            foreach (var level in mesh.Material?.Materials ?? [])
+            {
+                foreach (var slot in level ?? [])
+                {
+                    if (slot.MaterialHash != theirs) continue;
+                    slot.MaterialHash = mine;
+                    slots++;
+                }
+            }
+        }
+        if (slots > 0)
+        {
+            AtomicFile.WriteAllBytes(scenes[0], frame.WriteToStream());
+            used.Remove(theirs);
+            used.Add(mine);
+        }
+        sheet = Describe(label, prefab!, used, textures);
+        return null;
+    }
+
     /// <summary>Takes a material's rows out of both lists.</summary>
     public static string? Drop(FileInfo car, string material, out int removed, out Sheet? sheet)
     {

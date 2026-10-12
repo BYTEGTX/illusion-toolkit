@@ -356,12 +356,13 @@ public sealed class EditorTools
         IUiThreadMarshal ui,
         [Description("The car, by archive or model name, e.g. 'shubert_38_custom'.")] string car,
         [Description("Full path of the folder to write. Default: <game>\\_illusion_export\\m2o\\<resource>. Must be empty or an earlier export in this layout.")] string? output = null,
-        [Description("The resource's name (lower-case letters, digits, '-', '_', '.'). Default: 'car-' + the car's name with '-' for '_'.")] string? resource = null)
+        [Description("The resource's name (lower-case letters, digits, '-', '_', '.'). Default: 'car-' + the car's name with '-' for '_'.")] string? resource = null,
+        [Description("The stock car this one was made from ('shubert_hearse'), for a car whose working copy does not say - one cloned before the toolkit kept that note, or by hand. A new car's own vehicles.tbl row (its title, paint and KIND - car_kind) travels inside its archive only when its source is known: without it the car runs in the multiplayer as the table's first car, and the export's notes say so. Said once: it is written down in the working copy. Default: what the working copy says.")] string? madeFrom = null)
     {
         try
         {
             M2oExportInfo? result = null;
-            string? refused = await ui.RunAsync(() => editor.ExportCarForM2o(car, output, resource, out result));
+            string? refused = await ui.RunAsync(() => editor.ExportCarForM2o(car, output, resource, madeFrom, out result));
             return refused != null ? ToolResult.Invalid(refused) : ToolResult.Json(new { success = true, export = result });
         }
         catch (Exception ex)

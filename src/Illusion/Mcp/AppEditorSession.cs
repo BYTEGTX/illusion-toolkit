@@ -1147,7 +1147,7 @@ internal sealed class AppEditorSession : IEditorSession
         }
     }
 
-    public string? ExportCarForM2o(string car, string? output, string? resource, out M2oExportInfo? result)
+    public string? ExportCarForM2o(string car, string? output, string? resource, string? madeFrom, out M2oExportInfo? result)
     {
         result = null;
         if (EnsureEnvironment() is { } notReady) return notReady;
@@ -1156,7 +1156,7 @@ internal sealed class AppEditorSession : IEditorSession
         try
         {
             if (Assets.Cars.CarM2oExport.Export(car, string.IsNullOrWhiteSpace(output) ? null : output,
-                    string.IsNullOrWhiteSpace(resource) ? null : resource, out string? refusal) is not { } exported)
+                    string.IsNullOrWhiteSpace(resource) ? null : resource, string.IsNullOrWhiteSpace(madeFrom) ? null : madeFrom, out string? refusal) is not { } exported)
             {
                 return refusal;
             }

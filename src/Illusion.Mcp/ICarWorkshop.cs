@@ -61,6 +61,40 @@ public interface ICarWorkshop
     /// rows out).</summary>
     string? CarMaterialLike(string car, string material, string? like, out int changed, out CarMaterialsInfo? result);
 
+    /// <summary>Draws the car with <paramref name="material"/> wherever its meshes name
+    /// <paramref name="inPlaceOf"/>: the slots are re-pointed, nothing else is touched.</summary>
+    string? CarMaterialUse(string car, string material, string inPlaceOf, out int slots, out CarMaterialsInfo? result);
+
+    /// <summary>Gives the glass of a car's lamps the lamp ids the game lights it by (the bones of its lights, and
+    /// any bone named in <paramref name="ids"/>). <paramref name="dry"/>: only says what would change.</summary>
+    string? CarLampIds(string car, IReadOnlyDictionary<string, int> ids, bool dry, out CarLampIdsInfo? result);
+
+    /// <summary>Lays the picture of broken glass anew over each pane of a car.</summary>
+    string? CarGlass(string car, bool dry, out CarGlassInfo? result);
+
+    /// <summary>Which of the car's two paints its body takes where. With no <paramref name="line"/>: the mask as it
+    /// is. With one: written anew - the second paint above the line, between <paramref name="from"/> and
+    /// <paramref name="to"/> along the car. No <paramref name="materials"/>: the ones the car's PREFAB paints.</summary>
+    string? CarPaintMask(string car, IReadOnlyList<string> materials, double? from, double? to, IReadOnlyList<double[]> line, bool dry,
+        out CarPaintMaskInfo? result);
+
+    /// <summary>The points a car's exhaust smokes from; with <paramref name="points"/>, the list is written.</summary>
+    string? CarExhausts(string car, IReadOnlyList<string>? points, out IReadOnlyList<string> now);
+
+    /// <summary>Gives a car one more point (a frame with no geometry) like one it has.</summary>
+    string? CarPointCopy(string car, string like, string name);
+
+    /// <summary>Where a car's wheels stand; with a number, the wheels of that axle are moved outwards by it.</summary>
+    string? CarWheels(string car, double? front, double? rear, out IReadOnlyList<CarWheelInfo> wheels, out bool written);
+
+    /// <summary>Shifts a bone of a car's rig, with the frames hung on it and the PREFAB's record of a movable part (the
+    /// bones that hang on it stay where they stand).</summary>
+    string? CarBoneMove(string car, string bone, double dx, double dy, double dz, out CarBoneMoveInfo? result);
+
+    /// <summary>A car's row in vehicles.tbl - what kind of car the game takes it for; with
+    /// <paramref name="like"/>, the row takes that car's two flag columns.</summary>
+    string? CarKind(string car, string? like, out CarKindInfo? result);
+
     /// <summary>Why a car's working copy must not be written under the resource editor right now - it has the
     /// car on its stage with unsaved edits or in a Blender session - or null when it may.</summary>
     string? StageBusy(string car);
@@ -104,6 +138,41 @@ public sealed record CarMaterialsInfo(string Car, IReadOnlyList<CarMaterialRowIn
     IReadOnlyList<string> Unlisted);
 
 public sealed record CarBoneInfo(string Car, string Name, string Parent, int Index, int Bones);
+
+public sealed record CarLampInfo(string Bone, string Why, string Id, int Lod, int Vertices, int Changed, IReadOnlyList<string> Was);
+
+public sealed record CarLampIdsInfo(string Car, bool Written, int Changed, IReadOnlyList<CarLampInfo> Lamps, IReadOnlyList<string> Notes);
+
+/// <summary>A pane the picture was laid over: where it is, its size across and up, and the corner-to-corner
+/// range its second coordinates had before.</summary>
+public sealed record CarGlassPane(int Lod, string Material, int Vertices, float[] Middle, float Across, float Up, float[] WasFrom, float[] WasTo);
+
+public sealed record CarGlassInfo(string Car, bool Written, int Changed, IReadOnlyList<CarGlassPane> Panes, IReadOnlyList<string> Notes);
+
+/// <summary>The vertices of one painted material that carry one paint ("first", "second", or the raw colour of a
+/// vertex that is neither), and the box they stand in.</summary>
+public sealed record CarPaintPatch(int Lod, string Material, string Paint, int Vertices, float[] From, float[] To);
+
+/// <summary>What a written mask left on one level: vertices of each paint, and how many stand on the line
+/// undoubled - there the two paints blend across a face.</summary>
+public sealed record CarPaintLevel(int Lod, string Material, int First, int Second, int Blended, int Changed);
+
+public sealed record CarPaintMaskInfo(string Car, IReadOnlyList<string> Materials, bool Written, int Changed,
+    IReadOnlyList<CarPaintLevel> Levels, IReadOnlyList<CarPaintPatch> Now, IReadOnlyList<string> Notes);
+
+/// <summary>One wheel: which axle and end, its half-axle's frame, its brake drum's bone and where that stands in the
+/// model, the wheel's place on the drum in the drum bone's own axes and where that puts the wheel in the model, the
+/// arm's length, the drum's radius and width, and the axle's type (0 on front axles, 1 on a rear swinging arm).</summary>
+public sealed record CarWheelInfo(int Axle, string End, string Frame, string Drum, float[] DrumAt, float[] OnDrum, float[] At, float Arm,
+    float DrumRadius, float DrumWidth, float AxleType);
+
+/// <summary>A bone after its move: where it stands in the model, and how many records of a movable part's hinge the
+/// PREFAB had for it, moved with it.</summary>
+public sealed record CarBoneMoveInfo(string Car, string Bone, float[] At, int HingeRecords);
+
+public sealed record CarKindRow(int Id, string Name, string Flags, string MoreFlags, string CopReport);
+
+public sealed record CarKindInfo(string Car, CarKindRow Row, CarKindRow? Before, string? Like, bool Changed, string Table);
 
 public sealed record CarBeaconInfo(string Car, string Casing, string Lamp, string Parent, float[] At, bool BonesAdded, bool LightAdded, int Bones);
 

@@ -179,7 +179,7 @@ public sealed partial class CarToolWindow : Window
                 }
                 default:
                 {
-                    refused = _session.ExportCarForM2o(Car, FolderBox.Text.Trim(), ResourceBox.Text.Trim(), out M2oExportInfo? exported);
+                    refused = _session.ExportCarForM2o(Car, FolderBox.Text.Trim(), ResourceBox.Text.Trim(), null, out M2oExportInfo? exported);
                     heading = exported == null ? "" : $"Exported as {exported.Resource}";
                     text = exported == null ? "" : $"{exported.Folder}\n\n{exported.Files.Count} file(s); the folder lists "
                         + $"{exported.Vehicles} car(s) now." + Notes(exported.Notes);

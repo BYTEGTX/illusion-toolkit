@@ -322,7 +322,7 @@ map editor itself.
 | **Scene** | `scene_find`, `scene_select`, `scene_delete_selected`, `scene_duplicate_selected`, `object_move`, `object_properties`, `object_set_property`, `actor_import`, `object_import`, `mesh_hide_triangles`, `mesh_materials`, `collision_unused_hulls`, `crash_placements` |
 | **Interiors** | `shop_places`, `shop_place_add`, `shop_place_delete`, `shop_create`, `shop_delete` |
 | **Resource editor** | `editor_target`, `resource_list`, `resource_open`, `resource_status`, `car_tuning`, `car_tuning_set` |
-| **Cars** | `car_clone`, `car_substitute`, `car_export_m2o`, `archive_build`, `car_materials`, `car_material_like`, `car_lights`, `car_light_set`, `car_light_remove`, `car_bone_add`, `car_beacon`, `car_collisions`, `car_collision_add`, `car_collision_remove`, `car_winter`, `car_check` |
+| **Cars** | `car_clone`, `car_substitute`, `car_export_m2o`, `archive_build`, `car_materials`, `car_material_like`, `car_lights`, `car_light_set`, `car_light_remove`, `car_bone_add`, `car_beacon`, `car_collisions`, `car_collision_add`, `car_collision_remove`, `car_winter`, `car_check`, `car_lamp_ids`, `car_glass`, `car_paint_mask`, `car_exhausts`, `car_point_copy`, `car_wheels`, `car_bone_move`, `car_kind` |
 | **Loading zones** | `zones_at`, `zones_map`, `zone_move_face`, `zone_create`, `zone_delete` |
 | **Blender session** | `blender_open`, `blender_push`, `blender_end` |
 | **Viewport** | `camera_get`, `camera_set`, `camera_look_at`, `camera_frame_selection`, `view_set`, `viewport_screenshot` |
@@ -409,6 +409,24 @@ sphere, capsule or cylinder (the stock hulls stay, they cannot be cooked again) 
 material slots, textures, effects. `car_check` reports what only the game would show: weights off
 the byte lattice, unskinned and far vertices, thin and flat-UV triangles and, against a reference
 car, hidden channels out of range. `--probe-car-workshop` runs the writers on a scratch copy.
+
+A push from Blender carries positions, normals, the first UV set and the skin; whatever else a
+vertex holds is taken from the nearest vertex of the mesh that was there, and on new geometry
+that is wrong in ways only the game shows. Three tools write those channels after the last save
+of a build: `car_lamp_ids` gives lamp glass the id the game lights it by (a brake lamp that
+glowed as a reversing lamp), `car_glass` lays the picture of broken glass over each pane (cracks
+that ran as streaks across a pane larger than the source car's), `car_paint_mask` says which
+part of the body takes the car's second paint (a new roof painted in patches) - above a line
+along the car's side, with a hard edge where the mesh has its vertices doubled along it.
+`car_exhausts` reads and writes the points the exhaust smokes from (the prefab lists them by
+name; a renamed point alone gives no smoke), `car_point_copy` makes a second one, `car_wheels`
+shows where each wheel stands on its brake drum and widens an axle's track, and `car_bone_move`
+shifts a bone with the prefab's record of a movable part - a lamp's bone, not a lid's hinge.
+`car_kind` gives a car's row in `vehicles.tbl` the two flag columns of another car's: with a
+police car's the car has no radio and the radio keys switch its siren. A car streamed to
+Mafia II Online carries that row inside its own archive, when the toolkit knows which car it
+was made from - `car_export_m2o` takes `madeFrom` for a car that was not cloned here, and says so
+in its notes when the row does not travel.
 
 Two of the file tools are worth knowing about before you rely on them. `edit_stream_map` is the
 only one that writes: it previews by default (`dryRun` is true unless you say otherwise), keeps a

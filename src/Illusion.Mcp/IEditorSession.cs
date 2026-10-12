@@ -160,7 +160,7 @@ public interface IEditorSession
 
     /// <summary>Exports a built car as a multiplayer resource folder (package.json, stream/sds/cars/ and, for the
     /// materials the car adds, stream/materials/); nothing of the game is written. Null on success.</summary>
-    string? ExportCarForM2o(string car, string? output, string? resource, out M2oExportInfo? result);
+    string? ExportCarForM2o(string car, string? output, string? resource, string? madeFrom, out M2oExportInfo? result);
 
     /// <summary>Finds — and with <paramref name="apply"/> hides, as one undoable edit — the triangles of a mesh
     /// whose corners all lie inside a world-space box, without rebuilding the mesh. <paramref name="shared"/>

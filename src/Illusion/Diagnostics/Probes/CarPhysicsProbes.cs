@@ -5,8 +5,8 @@ using System.Text;
 using Illusion.Assets;
 using Illusion.Assets.Bridge;
 using Illusion.Assets.Collisions;
-using Illusion.Bridge.Payload;
 using Illusion.Assets.Sds;
+using Illusion.Bridge.Payload;
 using Illusion.Formats.Archive;
 using Illusion.Formats.Frames;
 using Illusion.Formats.Frames.ObjectTypes;
@@ -287,6 +287,11 @@ internal static class CarPhysicsProbes
             sb.AppendLine($"        {Any(owner.Unk0),-30} {Any(owner.Unk1),-30} "
                 + $"u16 lists {owner.Unk4.Count}/{owner.Unk6.Count}, "
                 + $"part transforms {owner.PartTransforms.Count}");
+            // where the owner's own data stands the part: read against the bone's place in the rig
+            sb.AppendLine($"            unk2 T {owner.Unk2.Translation:F3} rows {owner.Unk2.Row0:F2} {owner.Unk2.Row1:F2} {owner.Unk2.Row2:F2}"
+                + $"   unk10 T {owner.Unk10.Translation:F3}   unk11 {owner.Unk11:F3}   unk12 {owner.Unk12:F3}");
+            foreach (PrefabPartMatrixW m in owner.PartTransforms)
+                sb.AppendLine($"            part {Any(m.PartHashName),-20} T {m.PartTransform.Translation:F3} rows {m.PartTransform.Row0:F2} {m.PartTransform.Row1:F2} {m.PartTransform.Row2:F2}");
         }
         for (int j = 0; j < def.Joints.Count; j++)
         {
@@ -1164,7 +1169,7 @@ internal static class CarPhysicsProbes
             {
                 if (!shapes.TryGetValue(stub.Hash, out ResolvedCollisionShape? found)
                     || found.Shape.Element is not RigidBodyElement
-                        { Shape: RigidBodyShape.Capsule } capsule) continue;
+                    { Shape: RigidBodyShape.Capsule } capsule) continue;
                 Matrix4x4 world = stub.WorldTransform;
                 if (!Matrix4x4.Invert(world, out Matrix4x4 toLocal)) continue;
                 capsules++;

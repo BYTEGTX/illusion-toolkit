@@ -58,6 +58,18 @@ public static class CarLights
     /// <summary>What <see cref="AddBeacon"/> did: the two bones, what the casing hangs on, where it stands.</summary>
     public sealed record Beacon(string Casing, string Lamp, string Parent, Vector3 At, bool BonesAdded, bool LightAdded, int Bones);
 
+    /// <summary>The longest move of a bone, and the furthest a wheel is moved across the car, in one call (metres):
+    /// past these a number is a slip of the hand - centimetres meant, or a value run away.</summary>
+    public const float MaxBoneMove = 3f, MaxWheelMove = 0.5f;
+
+    /// <summary>One wheel as the PREFAB places it: its half-axle's frame, the brake drum's bone and where that bone
+    /// stands in the model, the wheel's place on the drum in the drum bone's own axes and where that puts the wheel in
+    /// the model, the arm's length (axle bone to drum bone), the drum's radius and width, and the axle's type
+    /// (measured: 0 on front axles, 1 on the rear's swinging arm - where every shipped car looked at keeps the
+    /// wheel AT the drum).</summary>
+    public sealed record Wheel(int Axle, bool Front, string Frame, string Drum, Vector3 DrumAt, Vector3 OnDrum, Vector3 At, float Arm,
+        float DrumRadius, float DrumWidth, float AxleType);
+
     private sealed class Opened
     {
         public required string Label;
@@ -333,6 +345,304 @@ public static class CarLights
         count = 0;
         if (Open(car, out Opened? o) is { } refused) return refused;
         return AddBoneOn(o!, name, parent, at, reach, out index, out count);
+    }
+
+    /// <summary>
+    /// Shifts a bone of the car's rig by an offset in the model's space, with its turn kept and the frames hung on
+    /// it following (<see cref="RigBones.Move"/>); the BONES that hang on it stay where they stand. The geometry skinned to it is NOT moved here: move it by the
+    /// same offset in Blender, or it stays where it was while it turns about the new place. For a part that
+    /// turns - the steering wheel when the whole cabin is raised.
+    /// When the bone is a movable part of the car (a lid, a door), the PREFAB's own record of where that part
+    /// hangs is moved with it (<see cref="PrefabFile.MoveCarPartHinge"/>).
+    /// </summary>
+    public static string? MoveBone(FileInfo car, string name, Vector3 offset) =>
+        MoveBone(car, name, offset, out _, out _);
+
+    /// <inheritdoc cref="MoveBone(FileInfo, string, Vector3)"/>
+    /// <param name="hinges">How many records of a movable part's hinge the PREFAB had for the bone, moved with it.</param>
+    /// <param name="at">Where the bone stands afterwards, in the model's space.</param>
+    public static string? MoveBone(FileInfo car, string name, Vector3 offset, out int hinges, out Vector3 at)
+    {
+        hinges = 0;
+        at = default;
+        if (Open(car, out Opened? o) is { } refused) return refused;
+        return MoveBoneOn(o!, name, offset, out hinges, out at);
+    }
+
+    /// <inheritdoc cref="MoveBone(FileInfo, string, Vector3)"/>
+    public static string? MoveBoneIn(string extracted, string name, Vector3 offset) =>
+        MoveBoneIn(extracted, name, offset, out _, out _);
+
+    /// <inheritdoc cref="MoveBone(FileInfo, string, Vector3)"/>
+    /// <param name="hinges">How many records of a movable part's hinge the PREFAB had for the bone, moved with it.</param>
+    /// <param name="at">Where the bone stands afterwards, in the model's space.</param>
+    public static string? MoveBoneIn(string extracted, string name, Vector3 offset, out int hinges, out Vector3 at)
+    {
+        hinges = 0;
+        at = default;
+        if (Open(extracted, Path.GetFileName(extracted), out Opened? o) is { } refused) return refused;
+        return MoveBoneOn(o!, name, offset, out hinges, out at);
+    }
+
+    private static string? MoveBoneOn(Opened o, string name, Vector3 offset, out int hinges, out Vector3 at)
+    {
+        hinges = 0;
+        at = default;
+        if (!float.IsFinite(offset.X) || !float.IsFinite(offset.Y) || !float.IsFinite(offset.Z) || offset.Length() > MaxBoneMove)
+            return $"a bone is moved by up to {MaxBoneMove:0.#} m";
+        name = (name ?? "").Trim();
+        // the bone's own axes, before it moves: the PREFAB keeps a movable part's centre of mass in them
+        int index = Array.FindIndex(o!.Bones, b => string.Equals(b, name, StringComparison.OrdinalIgnoreCase));
+        Vector3 inBone = offset;
+        if (index >= 0 && Matrix4x4.Invert(o.Model.GetJointWorldTransform(index), out Matrix4x4 toBone))
+            inBone = Vector3.TransformNormal(offset, toBone);
+        if (RigBones.Move(o.Model, name, offset) is { } notMoved) return notMoved;
+        // a part that MOVES (a lid, a door) is pinned by the game where the PREFAB says its bone stands, not where
+        // the rig does: that place moves with the bone, or the part is drawn shifted back by the whole move
+        hinges = index >= 0 ? o.Prefab.MoveCarPartHinge(Fnv64.Hash(o.Bones[index]), offset, inBone) : 0;
+        // Two files. The scene first; if the prefab then cannot be written, the scene goes back to what it was - the move
+        // is by an offset, and a car left with its bone moved and its hinge not would be moved AGAIN by a second try.
+        byte[]? sceneWas = hinges > 0 ? File.ReadAllBytes(o.FramePath) : null;
+        WriteScene(o);
+        if (hinges > 0)
+        {
+            try
+            {
+                WritePrefab(o);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                AtomicFile.WriteAllBytes(o.FramePath, sceneWas!);
+                throw;
+            }
+        }
+        at = index >= 0 ? o.Model.GetJointWorldTransform(index).Translation : default;
+        return null;
+    }
+
+    /// <summary>
+    /// Gives the car one more POINT like one it has: a frame with no geometry that the game looks up by its name.
+    /// The copy stands where the original does, hangs on the same parents and on the same bone; move it
+    /// afterwards. What it is for: the exhaust's smoke rises from the point named <c>exhaust_out</c> - or, on a
+    /// car with a pipe on each side (the Shubert Frigate), from <c>exhaust_outL</c> and <c>exhaust_outR</c>. A car
+    /// that ships with one pipe has one point; a second pipe needs a second one.
+    /// </summary>
+    /// <returns>Null on success, otherwise why not; a refusal leaves the car unchanged.</returns>
+    public static string? CopyPoint(FileInfo car, string like, string name)
+    {
+        if (Open(car, out Opened? o) is { } refused) return refused;
+        return CopyPointOn(o!, like, name);
+    }
+
+    /// <inheritdoc cref="CopyPoint(FileInfo, string, string)"/>
+    public static string? CopyPointIn(string extracted, string like, string name)
+    {
+        if (Open(extracted, Path.GetFileName(extracted), out Opened? o) is { } refused) return refused;
+        return CopyPointOn(o!, like, name);
+    }
+
+    private static string? CopyPointOn(Opened o, string like, string name)
+    {
+        name = (name ?? "").Trim();
+        like = (like ?? "").Trim();
+        if (name.Length == 0) return "the copy needs a name";
+        FrameObjectBase[] frames = [.. o!.Frame.FrameObjects.Values.OfType<FrameObjectBase>()];
+        if (frames.Any(f => string.Equals(f.Name.String, name, StringComparison.OrdinalIgnoreCase))) return $"the car already has a frame named '{name}'";
+        FrameObjectBase? source = frames.FirstOrDefault(f => string.Equals(f.Name.String, like, StringComparison.OrdinalIgnoreCase));
+        FrameObjectBase clone;
+        switch (source)
+        {
+            case null: return $"the car has no frame named '{like}'";
+            case FrameObjectPoint point: clone = new FrameObjectPoint(point); break;
+            case FrameObjectDummy dummy: clone = new FrameObjectDummy(dummy); break;
+            default: return $"'{like}' is a {source.GetType().Name}, not a point: only a frame with no geometry is copied";
+        }
+        clone.Name = new HashName(name);
+        o.Frame.FrameObjects.Add(clone.RefID, clone);
+        FrameDuplicator.LinkParents(clone, FrameDuplicator.ResolveRef(o.Frame, source, FrameEntryRefTypes.Parent1),
+            FrameDuplicator.ResolveRef(o.Frame, source, FrameEntryRefTypes.Parent2));
+        foreach (FrameObjectModel model in o.Frame.FrameObjects.Values.OfType<FrameObjectModel>())
+        {
+            FrameObjectModel.AttachmentReference? hung = (model.AttachmentReferences ?? []).FirstOrDefault(r => ReferenceEquals(r.Attachment, source));
+            if (hung != null) model.AttachToJoint(clone, hung.JointIndex);
+        }
+        WriteScene(o);
+        return null;
+    }
+
+    /// <summary>
+    /// Says which points of the car the exhaust's smoke rises from. The game does not look for a name: the car's
+    /// PREFAB LISTS the points, by the hash of each one's name - one on a car with one pipe, two on a car with a
+    /// pipe each side. A point that is renamed, or a second one that is made (<see cref="CopyPoint"/>), smokes
+    /// only once it is listed here (a renamed point alone: no smoke at all - seen in the game).
+    /// </summary>
+    /// <returns>Null on success, otherwise why not; a refusal leaves the car unchanged.</returns>
+    public static string? SetExhausts(FileInfo car, IReadOnlyList<string> names)
+    {
+        if (Open(car, out Opened? o) is { } refused) return refused;
+        return SetExhaustsOn(o!, names);
+    }
+
+    /// <inheritdoc cref="SetExhausts(FileInfo, IReadOnlyList{string})"/>
+    public static string? SetExhaustsIn(string extracted, IReadOnlyList<string> names)
+    {
+        if (Open(extracted, Path.GetFileName(extracted), out Opened? o) is { } refused) return refused;
+        return SetExhaustsOn(o!, names);
+    }
+
+    private static string? SetExhaustsOn(Opened o, IReadOnlyList<string> names)
+    {
+        if (names == null || names.Count == 0) return "name at least one point";
+        var hashes = new List<ulong>();
+        foreach (string raw in names)
+        {
+            string name = (raw ?? "").Trim();
+            FrameObjectBase? frame = o!.Frame.FrameObjects.Values.OfType<FrameObjectBase>()
+                .FirstOrDefault(f => string.Equals(f.Name.String, name, StringComparison.OrdinalIgnoreCase));
+            if (frame == null) return $"the car has no frame named '{name}'";
+            if (!hashes.Contains(frame.Name.Hash)) hashes.Add(frame.Name.Hash);
+        }
+        PrefabFile prefab = o!.Prefab;
+        for (int left = prefab.CarItemCount(CarItemKind.Exhaust); left > 0; left--)
+            if (prefab.TakeCarItem(CarItemKind.Exhaust, 0) == null) return "the PREFAB's list of exhaust points cannot be emptied";
+        foreach (ulong hash in hashes)
+            if (!prefab.AddCarItem(CarItemKind.Exhaust, hash)) return "the PREFAB has no place for exhaust points";
+        WritePrefab(o);
+        return null;
+    }
+
+    /// <summary>The names (or 0x... hashes) of the points the car's PREFAB lists for the exhaust's smoke.</summary>
+    public static string? Exhausts(FileInfo car, out IReadOnlyList<string> names)
+    {
+        names = [];
+        if (Open(car, out Opened? o) is { } refused) return refused;
+        return ExhaustsOn(o!, out names);
+    }
+
+    /// <inheritdoc cref="Exhausts(FileInfo, out IReadOnlyList{string})"/>
+    public static string? ExhaustsIn(string extracted, out IReadOnlyList<string> names)
+    {
+        names = [];
+        if (Open(extracted, Path.GetFileName(extracted), out Opened? o) is { } refused) return refused;
+        return ExhaustsOn(o!, out names);
+    }
+
+    private static string? ExhaustsOn(Opened o, out IReadOnlyList<string> names)
+    {
+        names = [];
+        names = [.. (o!.Prefab.Car?.ExhaustEmitters ?? []).Select(h => o.Names.TryGetValue(h, out string? n) ? n : "0x" + h.ToString("X16", CultureInfo.InvariantCulture))];
+        return null;
+    }
+
+    /// <summary>
+    /// Moves only the PREFAB's record of where a movable part hangs, for a bone that HAS been moved already
+    /// (by <see cref="MoveBone(FileInfo, string, Vector3)"/> as it was before it did this itself): the offset is the move the bone made.
+    /// </summary>
+    public static string? MoveHinge(FileInfo car, string name, Vector3 offset, out int moved)
+    {
+        moved = 0;
+        if (Open(car, out Opened? o) is { } refused) return refused;
+        return MoveHingeOn(o!, name, offset, out moved);
+    }
+
+    /// <inheritdoc cref="MoveHinge(FileInfo, string, Vector3, out int)"/>
+    public static string? MoveHingeIn(string extracted, string name, Vector3 offset, out int moved)
+    {
+        moved = 0;
+        if (Open(extracted, Path.GetFileName(extracted), out Opened? o) is { } refused) return refused;
+        return MoveHingeOn(o!, name, offset, out moved);
+    }
+
+    private static string? MoveHingeOn(Opened o, string name, Vector3 offset, out int moved)
+    {
+        moved = 0;
+        name = (name ?? "").Trim();
+        int index = Array.FindIndex(o!.Bones, b => string.Equals(b, name, StringComparison.OrdinalIgnoreCase));
+        if (index < 0) return $"the rig has no bone named '{name}'";
+        if (!Matrix4x4.Invert(o.Model.GetJointWorldTransform(index), out Matrix4x4 toBone)) return "the bone's transform cannot be inverted";
+        moved = o.Prefab.MoveCarPartHinge(Fnv64.Hash(o.Bones[index]), offset, Vector3.TransformNormal(offset, toBone));
+        if (moved == 0) return $"'{name}' is no movable part of this car";
+        WritePrefab(o);
+        return null;
+    }
+
+    /// <summary>
+    /// Where a car's wheels stand, axle by axle, and - with <paramref name="widen"/> - each wheel moved outwards by
+    /// that much (metres; front, rear). A wheel is not a bone: the PREFAB gives each half-axle a brake drum's bone
+    /// and the wheel's place ON that drum (<c>WheelPosOnBrakeDrum</c>); the track is the drum bones' spread plus
+    /// that. Widening writes that place only - the rig is not touched.
+    /// </summary>
+    public static string? Wheels(FileInfo car, (float Front, float Rear)? widen, out IReadOnlyList<Wheel> wheels) =>
+        Wheels(car, widen, out wheels, out _);
+
+    /// <inheritdoc cref="Wheels(FileInfo, ValueTuple{float, float}?, out IReadOnlyList{Wheel})"/>
+    /// <param name="written">Whether a wheel's place was written (a move of nought writes nothing).</param>
+    public static string? Wheels(FileInfo car, (float Front, float Rear)? widen, out IReadOnlyList<Wheel> wheels, out bool written)
+    {
+        wheels = [];
+        written = false;
+        if (Open(car, out Opened? o) is { } refused) return refused;
+        return WheelsOn(o!, widen, out wheels, out written);
+    }
+
+    /// <inheritdoc cref="Wheels(FileInfo, ValueTuple{float, float}?, out IReadOnlyList{Wheel})"/>
+    public static string? WheelsIn(string extracted, (float Front, float Rear)? widen, out IReadOnlyList<Wheel> wheels) =>
+        WheelsIn(extracted, widen, out wheels, out _);
+
+    /// <inheritdoc cref="Wheels(FileInfo, ValueTuple{float, float}?, out IReadOnlyList{Wheel})"/>
+    /// <param name="written">Whether a wheel's place was written (a move of nought writes nothing).</param>
+    public static string? WheelsIn(string extracted, (float Front, float Rear)? widen, out IReadOnlyList<Wheel> wheels, out bool written)
+    {
+        wheels = [];
+        written = false;
+        if (Open(extracted, Path.GetFileName(extracted), out Opened? o) is { } refused) return refused;
+        return WheelsOn(o!, widen, out wheels, out written);
+    }
+
+    private static string? WheelsOn(Opened o, (float Front, float Rear)? widen, out IReadOnlyList<Wheel> wheels, out bool written)
+    {
+        var found = new List<Wheel>();
+        wheels = [];
+        written = false;
+        if (widen is { } asked && (!float.IsFinite(asked.Front) || !float.IsFinite(asked.Rear) || MathF.Abs(asked.Front) > MaxWheelMove || MathF.Abs(asked.Rear) > MaxWheelMove))
+            return $"a wheel is moved by up to {MaxWheelMove:0.#} m across the car (the numbers are metres)";
+        PrefabFile prefab = o.Prefab;
+        string Named(ulong h) => o.Names.TryGetValue(h, out string? n) ? n : "0x" + h.ToString("X16", CultureInfo.InvariantCulture);
+        int axles = prefab.CarItemCount(CarItemKind.AxlePair) * 2;
+        for (int i = 0; i < axles; i++)
+        {
+            ulong frame = prefab.GetCarFrame(CarFrameSlot.AxleFrame, i), drum = prefab.GetCarFrame(CarFrameSlot.AxleBrakeDrum, i);
+            string drumName = Named(drum);
+            int bone = Array.FindIndex(o.Bones, b => string.Equals(b, drumName, StringComparison.OrdinalIgnoreCase));
+            // (which end an axle is of, and which way is outwards, is read off its drum's bone: without the bone
+            // neither is known, and nothing is moved on a guess)
+            if (bone < 0 && widen != null) return $"axle {i}: its brake drum ({drumName}) is no bone of the rig - the wheels are not moved";
+            Matrix4x4 drumWorld = bone >= 0 ? o.Model.GetJointWorldTransform(bone) : Matrix4x4.Identity;
+            Vector3 at = bone >= 0 ? drumWorld.Translation : default;
+            var pos = new Vector3(prefab.GetCarValue(CarValueSlot.WheelPosOnBrakeDrum, i, 0), prefab.GetCarValue(CarValueSlot.WheelPosOnBrakeDrum, i, 1),
+                prefab.GetCarValue(CarValueSlot.WheelPosOnBrakeDrum, i, 2));
+            bool front = at.Y > 0;
+            // (an axle that is not asked to move keeps its bytes: nothing is written for it)
+            if (widen is { } w && (front ? w.Front : w.Rear) is var add && add != 0f)
+            {
+                // the wheel's place on the drum is written in the drum bone's own axes: the axis that points across the
+                // car is found from the bone, and the wheel goes further along it, away from the middle
+                if (!Matrix4x4.Invert(drumWorld, out Matrix4x4 toBone)) return $"axle {i}: its brake drum's bone cannot be read";
+                if (MathF.Abs(at.X) < 1e-4f) return $"axle {i}: its wheel stands in the middle of the car - there is no outwards";
+                Vector3 outwards = Vector3.TransformNormal(new Vector3(MathF.Sign(at.X), 0, 0), toBone);
+                Vector3 moved = pos + (outwards * add);
+                for (int axis = 0; axis < 3; axis++)
+                    if (!prefab.SetCarValue(CarValueSlot.WheelPosOnBrakeDrum, i, axis, axis == 0 ? moved.X : axis == 1 ? moved.Y : moved.Z)) return $"axle {i}: the wheel's place cannot be written";
+                pos = moved;
+                written = true;
+            }
+            found.Add(new Wheel(i, front, Named(frame), drumName, at, pos, at + Vector3.TransformNormal(pos, drumWorld),
+                prefab.GetCarValue(CarValueSlot.WheelArmLength, i, 0), prefab.GetCarValue(CarValueSlot.AxleBrakeDrumRadius, i, 0),
+                prefab.GetCarValue(CarValueSlot.BrakeDrumWidth, i, 0), prefab.GetCarValue(CarValueSlot.AxleType, i, 0)));
+        }
+        if (written) WritePrefab(o);
+        wheels = found;
+        return null;
     }
 
     /// <inheritdoc cref="AddBone(FileInfo, string, string, Vector3, float, out int, out int)"/>

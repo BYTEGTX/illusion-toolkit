@@ -1036,6 +1036,30 @@ internal static class ProbeRunner
             case "--probe-car-lights":
                 CarLightProbes.Run(args.Skip(1).ToArray());
                 return true;
+            // What a car's lamp vertices carry besides position and the first UV set (colours, further UV sets,
+            // damage group), per lamp bone, for several cars. Output: %TEMP%\illusion_car_lamp_channels.txt
+            case "--probe-car-lamp-channels":
+                CarLampChannelProbes.Run(args.Skip(1).ToArray());
+                return true;
+            // The same over every car: the table of lamp ids by kind and side. Output: %TEMP%\illusion_car_lamp_census.txt
+            case "--probe-car-lamp-census":
+                CarLampChannelProbes.Census();
+                return true;
+            // The colours a car's vertices carry, material by material - the mask of its second paint among them: cars.
+            // Output: %TEMP%\illusion_car_paint_mask.txt
+            case "--probe-car-paint-mask":
+                CarLampChannelProbes.PaintMask(args.Skip(1).ToArray());
+                return true;
+            // What a car's glass carries in each texture-coordinate set, pane by pane: cars.
+            // Output: %TEMP%\illusion_car_glass_uv.txt
+            case "--probe-car-glass":
+                CarLampChannelProbes.GlassUv(args.Skip(1).ToArray());
+                return true;
+            // A car's tuning tables straight from an archive anywhere (a DLC's car): the .sds path or a car's name.
+            // Output: %TEMP%\illusion_car_tuning_dump.txt
+            case "--probe-car-tuning-dump":
+                CarLampChannelProbes.TuningDump(args.Skip(1).ToArray());
+                return true;
             // What the game's light frames and sectors hold, with the lights split by where they stand (in a
             // room-sized sector, a district-sized one, none). Optional args = archives under pc\sds without
             // the extension, e.g. city\italy shops\gunshop. Output: %TEMP%\illusion_world_lights.txt

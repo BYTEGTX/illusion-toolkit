@@ -356,6 +356,38 @@ public sealed partial class PrefabFile
     };
 
     /// <summary>The car's deformation block — where the parts and everything that indexes them live.</summary>
+    /// <summary>
+    /// Moves the place a movable part of the car HANGS AT - its hinge - in the PREFAB's own data, by an offset in
+    /// the model's space. The game does not take that place from the rig: each part that moves (a lid, a door, a
+    /// bumper) has an "owner" record holding where its bone stands (written z, y, x), and the game pins the part
+    /// there. A bone moved in the rig alone leaves the part pinned at the old place - seen in the game: a boot lid
+    /// whose bone had been moved to its front edge stood sunk inside the boot, shifted by exactly the move,
+    /// backwards. The part's centre of mass is written in the bone's own space: it is shifted the other way
+    /// (<paramref name="offsetInBone"/>: the same offset in the bone's axes), so the mass stays where it was.
+    /// </summary>
+    /// <returns>How many records were moved: 0 when the frame is no movable part of this car.</returns>
+    public int MoveCarPartHinge(ulong frame, Vector3 offset, Vector3 offsetInBone)
+    {
+        if (Deformation() is not { } deformation) return 0;
+        int moved = 0;
+        var written = new Vector3(offset.Z, offset.Y, offset.X);
+        foreach (Native.Model.PrefabOwnerDeformW owner in deformation.OwnerDeforms)
+        {
+            if (owner.Unk0 != frame) continue;
+            owner.Unk2.Translation += written;
+            owner.Unk10.Translation += written;
+            owner.Unk11 -= offsetInBone;
+            moved++;
+        }
+        foreach (Native.Model.PrefabDeformPartW part in deformation.DeformParts)
+        {
+            if (part.Unk3.Count == 0 || part.Unk3[0] != frame) continue;
+            part.CentreOfMass -= offsetInBone;
+            moved++;
+        }
+        return moved;
+    }
+
     private Native.Model.PrefabDeformationInitW? Deformation()
     {
         Native.Model.PrefabEntryW? entry = Wire.Prefabs.FirstOrDefault(p => p.CarInit.Count > 0);

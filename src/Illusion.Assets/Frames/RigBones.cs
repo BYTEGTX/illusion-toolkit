@@ -148,6 +148,68 @@ public static class RigBones
         return null;
     }
 
+    /// <summary>
+    /// Shifts a bone to another place in the model's space, keeping its turn: its rest, its joint (what it is to
+    /// its parent) and the inverse the skin is bound by all follow. The GEOMETRY skinned to the bone is not
+    /// touched here - it is stored in the model's space and must be moved by the same offset (in Blender),
+    /// or it is drawn where it was while it turns about the new place - which is what a HINGE needs: a lid that
+    /// should turn about its own front edge keeps its geometry and gets its bone moved there. Frames hung on the
+    /// bone follow it (a lid's collision volumes: move them back). Bones that hang on it STAY where they stand:
+    /// their joints are rewritten against the bone's new place.
+    /// </summary>
+    /// <returns>Null on success, otherwise why not; a refusal leaves the model unchanged.</returns>
+    public static string? Move(FrameObjectModel model, string name, Vector3 offset)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        if (!float.IsFinite(offset.X) || !float.IsFinite(offset.Y) || !float.IsFinite(offset.Z)) return "the offset must be finite numbers";
+        FrameSkeleton skeleton;
+        FrameSkeletonHierarchy hierarchy;
+        FrameBlendInfo blend;
+        try
+        {
+            skeleton = model.GetSkeletonObject();
+            hierarchy = model.GetSkeletonHierarchyObject();
+            blend = model.GetBlendInfoObject();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NullReferenceException or KeyNotFoundException)
+        {
+            return "the model has no rig that can be read: " + ex.Message;
+        }
+
+        HashName[] names = skeleton.BoneNames ?? [];
+        int n = names.Length;
+        int b = Array.FindIndex(names, bone => string.Equals(bone.String, name, StringComparison.OrdinalIgnoreCase));
+        if (b < 0) return $"the rig has no bone named '{name}'";
+        if (b == 0) return "the root is not moved";
+        byte[] parents = hierarchy.ParentIndices ?? [];
+        Matrix4x4[] joint = skeleton.JointTransforms ?? [], world = skeleton.WorldTransforms ?? [], rest = model.RestTransform ?? [];
+        FrameBlendInfo.BoneTransform[] poses = blend.BoneTransforms ?? [];
+        if (parents.Length != n || joint.Length != n || world.Length != n || rest.Length != n || poses.Length != n - 1)
+            return "the rig's per-bone tables are not all as long as its list of bones";
+        int[] children = [.. Enumerable.Range(1, n - 1).Where(c => parents[c] == b)];
+        foreach (int c in children)
+            if (!Close(Whole(joint[c]) * Whole(rest[b]), Whole(rest[c]))) return $"'{names[c].String}', which hangs on '{name}', does not stand where its joint and '{name}' put it";
+        int p = parents[b];
+        if (!Close(Whole(joint[b]) * Whole(rest[p]), Whole(rest[b]))) return $"'{name}' does not stand where its joint and its parent put it";
+        if (world[b] == default) return $"'{name}' keeps no world matrix (the bone the rig is scaled by): it is not moved";
+        if (!Close(Whole(world[b]) * Whole(rest[b]), Matrix4x4.Identity)) return $"'{name}' has a world matrix that is not the inverse of its rest";
+        if (!Close(Whole(poses[b - 1].Transform), Whole(world[b]))) return $"the blend info's pose of '{name}' is not its world matrix";
+
+        Matrix4x4 newRest = Whole(rest[b]) * Matrix4x4.CreateTranslation(offset);
+        if (!Matrix4x4.Invert(Whole(rest[p]), out Matrix4x4 parentInverse)) return "the parent's transform cannot be inverted";
+        if (!Matrix4x4.Invert(newRest, out Matrix4x4 newWorld)) return "the moved transform cannot be inverted";
+        joint[b] = Stored(newRest * parentInverse, joint[b]);
+        foreach (int c in children) joint[c] = Stored(Whole(rest[c]) * newWorld, joint[c]);
+        world[b] = Stored(newWorld, world[b]);
+        rest[b] = Stored(newRest, rest[b]);
+        poses[b - 1].Transform = Stored(newWorld, poses[b - 1].Transform);
+        skeleton.JointTransforms = joint;
+        skeleton.WorldTransforms = world;
+        model.RestTransform = rest;
+        blend.BoneTransforms = poses;
+        return null;
+    }
+
     // [count, 1, 2, ..., count - 1, 0]: what the hierarchy keeps beside its parents on every car looked at.
     private static byte[] Chain(int count)
     {

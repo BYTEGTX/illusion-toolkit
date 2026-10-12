@@ -248,6 +248,47 @@ internal sealed class AppCarWorkshop : ICarWorkshop
         return null;
     }
 
+    /// <summary>
+    /// The top of a car's body on its middle line, in the model's space, or null when the body cannot be read.
+    /// Where a roof beacon is first proposed to stand. Only what lies within a hand of the middle line is
+    /// looked at: the highest vertex of a car is the tip of its aerial, off to one side.
+    /// </summary>
+    internal System.Numerics.Vector3? BodyTop(string car)
+    {
+        if (Car(car, out FileInfo? file) != null) return null;
+        try
+        {
+            string extracted = SdsMeshLoader.EnsureExtracted(file!);
+            var body = SdsMeshLoader.OpenScene(extracted).FrameResource?.FrameObjects?.Values
+                .OfType<Illusion.Formats.Frames.ObjectTypes.FrameObjectModel>()
+                .OrderByDescending(m => m.GetSkeletonObject().BoneNames?.Length ?? 0).FirstOrDefault();
+            if (body == null || SdsMeshLoader.DecodeLod(body, 0) is not { Positions.Length: > 0 } mesh) return null;
+            var middle = mesh.Positions.Where(p => MathF.Abs(p.X) <= 0.1f).ToList();
+            if (middle.Count == 0) return null;
+            float top = middle.Max(p => p.Z);
+            // What lies within two centimetres of the highest point there: the flat of the roof, or its ridge.
+            var crown = middle.Where(p => p.Z >= top - 0.02f).ToList();
+            return new System.Numerics.Vector3(0f, (crown.Min(p => p.Y) + crown.Max(p => p.Y)) / 2f, top);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or InvalidOperationException or InvalidDataException)
+        {
+            return null;
+        }
+    }
+
+    public string? CarMaterialUse(string car, string material, string inPlaceOf, out int slots, out CarMaterialsInfo? result)
+    {
+        slots = 0;
+        result = null;
+        if (Car(car, out FileInfo? file) is { } refused) return refused;
+        Assets.Cars.CarMaterials.Sheet? sheet = null;
+        int count = 0;
+        if (Guarded(() => Assets.Cars.CarMaterials.Use(file!, material, inPlaceOf, out count, out sheet)) is { } failed) return failed;
+        slots = count;
+        result = Info(sheet!);
+        return null;
+    }
+
     // ---- collisions
 
     private static float[] V(System.Numerics.Vector3 v) => [MathF.Round(v.X, 4), MathF.Round(v.Y, 4), MathF.Round(v.Z, 4)];
@@ -503,6 +544,149 @@ internal sealed class AppCarWorkshop : ICarWorkshop
         Assets.Cars.CarLights.Beacon? beacon = null;
         if (Guarded(() => Assets.Cars.CarLights.AddBeacon(file!, new System.Numerics.Vector3((float)x, (float)y, (float)z), checkBone, (float)reach, out beacon)) is { } failed) return failed;
         result = new CarBeaconInfo(file!.Name, beacon!.Casing, beacon.Lamp, beacon.Parent, V(beacon.At), beacon.BonesAdded, beacon.LightAdded, beacon.Bones);
+        return null;
+    }
+
+    public string? CarLampIds(string car, IReadOnlyDictionary<string, int> ids, bool dry, out CarLampIdsInfo? result)
+    {
+        result = null;
+        if (Car(car, out FileInfo? file) is { } refused) return refused;
+        Assets.Cars.CarLampIds.Report? report = null;
+        if (Guarded(() => Assets.Cars.CarLampIds.Apply(file!, ids, !dry, out report)) is { } failed) return failed;
+        result = new CarLampIdsInfo(report!.Car, !dry && report.PoolFilesWritten > 0, report.Changed,
+            [.. report.Lamps.Select(l => new CarLampInfo(l.Bone, l.Why, $"0x{l.Id:X2}", l.Lod, l.Vertices, l.Changed, l.Was))], report.Notes);
+        return null;
+    }
+
+    public string? CarGlass(string car, bool dry, out CarGlassInfo? result)
+    {
+        result = null;
+        if (Car(car, out FileInfo? file) is { } refused) return refused;
+        Assets.Cars.CarGlassUv.Report? report = null;
+        if (Guarded(() => Assets.Cars.CarGlassUv.Apply(file!, !dry, out report)) is { } failed) return failed;
+        result = new CarGlassInfo(report!.Car, !dry && report.PoolFilesWritten > 0, report.Changed,
+            [.. report.Panes.Select(p => new CarGlassPane(p.Lod, p.Material, p.Vertices, V(p.Middle), MathF.Round(p.Across, 3), MathF.Round(p.Up, 3),
+                [MathF.Round(p.WasLow.X, 3), MathF.Round(p.WasLow.Y, 3)], [MathF.Round(p.WasHigh.X, 3), MathF.Round(p.WasHigh.Y, 3)]))],
+            report.Notes);
+        return null;
+    }
+
+    public string? CarPaintMask(string car, IReadOnlyList<string> materials, double? from, double? to, IReadOnlyList<double[]> line, bool dry,
+        out CarPaintMaskInfo? result)
+    {
+        result = null;
+        if (Car(car, out FileInfo? file) is { } refused) return refused;
+        var painted = new List<string>(materials.Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim()));
+        if (painted.Count == 0)
+        {
+            // what the car's PREFAB paints in the car's colour: the body's paint and the far level's
+            Assets.Cars.CarMaterials.Sheet? sheet = null;
+            if (Guarded(() => Assets.Cars.CarMaterials.Read(file!, out sheet)) is { } unread) return unread;
+            painted.AddRange(sheet!.Rows.Where(r => r.Flags == 1 && r.OnTheCar).Select(r => r.Material).Distinct(StringComparer.Ordinal));
+            if (painted.Count == 0) return "the car's PREFAB paints no material its meshes are drawn with - name the paint's materials";
+        }
+        IReadOnlyList<Assets.Cars.CarPaintMask.Patch> patches = [];
+        var levels = new List<CarPaintLevel>();
+        IReadOnlyList<string> notes = [];
+        int changed = 0;
+        bool written = false;
+        if (line.Count > 0)
+        {
+            if (line.Count < 2 || line.Any(p => p.Length != 2 || !double.IsFinite(p[0]) || !double.IsFinite(p[1])))
+                return "the line is two points at least, each 'y:z' - along the car, and how high";
+            if (from is not { } a || to is not { } b || !double.IsFinite(a) || !double.IsFinite(b))
+                return "with a line, say from and to: where along the car (y) the second paint begins and ends";
+            Assets.Cars.CarPaintMask.Report? report = null;
+            (float, float)[] points = [.. line.Select(p => ((float)p[0], (float)p[1]))];
+            if (Guarded(() => Assets.Cars.CarPaintMask.Apply(file!, painted, (float)a, (float)b, points, !dry, out report)) is { } failed) return failed;
+            levels.AddRange(report!.Levels.Select(l => new CarPaintLevel(l.Lod, l.Material, l.FirstVertices, l.SecondVertices, l.OnTheLine, l.Changed)));
+            notes = report.Notes;
+            changed = report.Changed;
+            written = !dry && report.PoolFilesWritten > 0;
+        }
+        if (Guarded(() => Assets.Cars.CarPaintMask.Survey(file!, 0, out patches)) is { } unseen) return unseen;
+        result = new CarPaintMaskInfo(file!.Name, painted, written, changed, levels,
+            [.. patches.Where(p => painted.Contains(p.Material)).Select(p => new CarPaintPatch(p.Lod, p.Material,
+                p.Colour == "255,0,0,255" ? "first" : p.Colour == "0,255,0,255" ? "second" : p.Colour, p.Vertices, V(p.Low), V(p.High)))],
+            notes);
+        return null;
+    }
+
+    public string? CarExhausts(string car, IReadOnlyList<string>? points, out IReadOnlyList<string> now)
+    {
+        now = [];
+        if (Car(car, out FileInfo? file) is { } refused) return refused;
+        if (points != null && Guarded(() => Assets.Cars.CarLights.SetExhausts(file!, points)) is { } failed) return failed;
+        IReadOnlyList<string> listed = [];
+        if (Guarded(() => Assets.Cars.CarLights.Exhausts(file!, out listed)) is { } unread) return unread;
+        now = listed;
+        return null;
+    }
+
+    public string? CarPointCopy(string car, string like, string name)
+    {
+        if (Car(car, out FileInfo? file) is { } refused) return refused;
+        return Guarded(() => Assets.Cars.CarLights.CopyPoint(file!, like, name));
+    }
+
+    public string? CarWheels(string car, double? front, double? rear, out IReadOnlyList<CarWheelInfo> wheels, out bool written)
+    {
+        wheels = [];
+        written = false;
+        if (Car(car, out FileInfo? file) is { } refused) return refused;
+        float limit = Assets.Cars.CarLights.MaxWheelMove;
+        if ((front is { } f && !(Math.Abs(f) <= limit)) || (rear is { } r && !(Math.Abs(r) <= limit)))
+            return $"front and rear are metres, up to {limit:0.#} either way";
+        (float, float)? widen = (front ?? 0.0) == 0.0 && (rear ?? 0.0) == 0.0 ? null : ((float)(front ?? 0.0), (float)(rear ?? 0.0));
+        IReadOnlyList<Assets.Cars.CarLights.Wheel> said = [];
+        bool wrote = false;
+        if (Guarded(() => Assets.Cars.CarLights.Wheels(file!, widen, out said, out wrote)) is { } failed) return failed;
+        written = wrote;
+        wheels = [.. said.Select(w => new CarWheelInfo(w.Axle, w.Front ? "front" : "rear", w.Frame, w.Drum, V(w.DrumAt), V(w.OnDrum), V(w.At),
+            MathF.Round(w.Arm, 4), MathF.Round(w.DrumRadius, 4), MathF.Round(w.DrumWidth, 4), w.AxleType))];
+        return null;
+    }
+
+    public string? CarBoneMove(string car, string bone, double dx, double dy, double dz, out CarBoneMoveInfo? result)
+    {
+        result = null;
+        if (Car(car, out FileInfo? file) is { } refused) return refused;
+        float limit = Assets.Cars.CarLights.MaxBoneMove;
+        if (!(Math.Abs(dx) <= limit) || !(Math.Abs(dy) <= limit) || !(Math.Abs(dz) <= limit)) return $"the move is three numbers, metres, up to {limit:0.#} each";
+        if (dx == 0.0 && dy == 0.0 && dz == 0.0) return "the move is nought";
+        int hinges = 0;
+        System.Numerics.Vector3 at = default;
+        if (Guarded(() => Assets.Cars.CarLights.MoveBone(file!, bone, new System.Numerics.Vector3((float)dx, (float)dy, (float)dz), out hinges, out at)) is { } failed)
+            return failed;
+        result = new CarBoneMoveInfo(file!.Name, (bone ?? "").Trim(), V(at), hinges);
+        return null;
+    }
+
+    public string? CarKind(string car, string? like, out CarKindInfo? result)
+    {
+        result = null;
+        if (EnsureEnvironment() is { } notReady) return notReady;
+        if (string.IsNullOrWhiteSpace(car)) return "name the car: its model or archive name";
+        var tables = new FileInfo(Path.Combine(Assets.MafiaEnvironment.PcFolder, "sds", "tables", "tables.sds"));
+        if (!tables.Exists) return "there is no pc\\sds\\tables\\tables.sds";
+        string table = "";
+        Assets.Cars.CarKind.Row? row = null, before = null;
+        bool changed = false;
+        string? failed = Guarded(() =>
+        {
+            table = Path.Combine(SdsMeshLoader.EnsureExtracted(tables), "tables", "vehicles.tbl");
+            return string.IsNullOrWhiteSpace(like)
+                ? Assets.Cars.CarKind.Read(table, car, out row)
+                : Assets.Cars.CarKind.Like(table, car, like, out before, out row, out changed);
+        });
+        if (failed != null) return failed;
+        if (changed)
+        {
+            // the table is one of tables.sds: that archive goes on the build list
+            Application.Current.Windows.OfType<ResourceEditorWindow>().FirstOrDefault()?.TargetStage.MarkArchiveModified(tables);
+        }
+        static CarKindRow Said(Assets.Cars.CarKind.Row r) => new(r.Id, r.Name, $"0x{r.Flags:X8}", $"0x{r.MoreFlags:X8}", r.CopReport);
+        result = new CarKindInfo(row!.Name, Said(row), before == null ? null : Said(before), string.IsNullOrWhiteSpace(like) ? null : like.Trim(), changed, table);
         return null;
     }
 
