@@ -9,6 +9,8 @@ public partial class ResourceEditorWindow
 {
     private HideTrianglesWindow? _hideTriangles;
     private StreamMapWindow? _streamMap;
+    private CarWorkshopWindow? _carWorkshop;
+    private ArchiveMaterialsWindow? _archiveMaterials;
 
     private void HideTriangles_Click(object sender, RoutedEventArgs e)
     {
@@ -32,6 +34,43 @@ public partial class ResourceEditorWindow
         _streamMap = new StreamMapWindow { Owner = this };
         _streamMap.Closed += (_, _) => _streamMap = null;
         _streamMap.Show();
+    }
+
+    private void ArchiveMaterials_Click(object sender, RoutedEventArgs e)
+    {
+        if (_archiveMaterials != null)
+        {
+            _archiveMaterials.Activate();
+            return;
+        }
+        _archiveMaterials = new ArchiveMaterialsWindow(Stage, StagedEntry?.File.FullName) { Owner = this };
+        _archiveMaterials.Closed += (_, _) => _archiveMaterials = null;
+        _archiveMaterials.Show();
+    }
+
+    // The workshop works on the car on the stage and stays open beside it, like Hide triangles.
+    private void CarWorkshop_Click(object sender, RoutedEventArgs e)
+    {
+        if (_carWorkshop != null)
+        {
+            _carWorkshop.Activate();
+            return;
+        }
+        CommitFocusedField();
+        if (CarWorkshopWindow.CarOnStage(this) is not { } car)
+        {
+            AppDialog.Show(this, new DialogOptions
+            {
+                Title = "Car Workshop",
+                Icon = DialogIcon.Info,
+                Heading = "Open a car first",
+                Text = "The workshop works on the car on the stage: pick one under cars in the library on the left.",
+            });
+            return;
+        }
+        _carWorkshop = new CarWorkshopWindow(this, car) { Owner = this };
+        _carWorkshop.Closed += (_, _) => _carWorkshop = null;
+        _carWorkshop.Show();
     }
 
     private void CloneCar_Click(object sender, RoutedEventArgs e) => RunCarTool(CarTool.Clone);

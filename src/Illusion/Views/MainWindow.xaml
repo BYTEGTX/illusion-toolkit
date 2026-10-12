@@ -63,6 +63,10 @@
                 <Separator />
                 <MenuItem Header="Loading zones…" Click="LoadZones_Click"
                           ToolTip="Which zones make the game load a district at a point, and moving a zone's face" />
+                <MenuItem Header="Interiors…" Click="Interiors_Click"
+                          ToolTip="The shops, diners and flats of the game and where each stands; stand one at a new place, or make a new one" />
+                <MenuItem Header="Materials of an archive…" Click="ArchiveMaterials_Click"
+                          ToolTip="What an archive is drawn with, and the materials that have to travel with it saved as a library" />
                 <MenuItem Header="Stream map…" Click="StreamMap_Click"
                           ToolTip="Find and replace in StreamMapa.bin - archive paths, line and group names" />
             </MenuItem>
@@ -197,6 +201,23 @@
                                                 <ToggleButton Grid.Column="2" x:Name="CrashToggle"
                                                               Style="{StaticResource ToggleSwitch}" Margin="8,0,0,0"
                                                               Checked="Crash_Changed" Unchecked="Crash_Changed" />
+                                            </Grid>
+                                            <Grid Margin="0,4"
+                                                  ToolTip="Interiors — the shops, diners and flats standing in the loaded part of the map, drawn where the game stands them">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Path Grid.Column="0" Width="15" Height="15" Stretch="Uniform"
+                                                      VerticalAlignment="Center" Margin="0,0,9,0" Fill="Transparent"
+                                                      Stroke="{x:Static v:PaletteInk.Teal}" StrokeThickness="1.2" StrokeLineJoin="Round"
+                                                      Data="{StaticResource IconScene}" />
+                                                <TextBlock Grid.Column="1" Text="Interiors" Foreground="White"
+                                                           FontSize="12" VerticalAlignment="Center" />
+                                                <ToggleButton Grid.Column="2" x:Name="InteriorsToggle"
+                                                              Style="{StaticResource ToggleSwitch}" Margin="8,0,0,0"
+                                                              Checked="InteriorsLayer_Changed" Unchecked="InteriorsLayer_Changed" />
                                             </Grid>
                                             <Grid Margin="0,4"
                                                   ToolTip="Collision hulls — translucent, per district">

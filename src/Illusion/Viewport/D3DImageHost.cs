@@ -809,6 +809,16 @@ public sealed class D3DImageHost : ViewportControl, ITransformGizmoHost, IBoxGiz
         return origin + dir * (float.IsFinite(t) && t > 0f ? t : 10f);
     }
 
+    /// <summary>The same point, or null where the ray meets nothing: for what has to stand ON something.</summary>
+    internal Vector3? PickSceneryPoint(Point screenPos)
+    {
+        (Vector3 origin, Vector3 dir) = BuildViewportRay(screenPos);
+        PickMesh(screenPos, out float meshT);
+        Streamer.PickCrash(origin, dir, out float crashT);
+        float t = MathF.Min(meshT, crashT);
+        return float.IsFinite(t) && t > 0f ? origin + (dir * t) : null;
+    }
+
     /// <inheritdoc cref="CollisionEditController.UnusedHullCount"/>
     public int UnusedHullCount() => CollisionEditing.UnusedHullCount();
 
@@ -1206,6 +1216,9 @@ public sealed class D3DImageHost : ViewportControl, ITransformGizmoHost, IBoxGiz
         // A tool that is picking on the scene (Tools → Hide triangles picks triangles) is offered the click
         // first; what it does not take is an ordinary click.
         if (SceneClickTaker is { } taker && taker(pos)) return;
+        // Then what is drawn on the map without being of the scene (the Interiors layer): a click on one of its
+        // interiors picks it, and the gizmo is its own until something else is clicked.
+        if (StandInClickTaker is { } standIn && standIn(pos)) return;
 
         // With the Loading zones layer up a click picks a ZONE and nothing else: the zone is then what the tool
         // shelf's Move and Scale act on, and an object picked by the same click would be a second thing under
@@ -1227,6 +1240,19 @@ public sealed class D3DImageHost : ViewportControl, ITransformGizmoHost, IBoxGiz
     /// <summary>While set, a left click on the scene is offered to it before anything is selected; true means
     /// the click was its own. One tool at a time: the tool that sets it clears it.</summary>
     internal Func<Point, bool>? SceneClickTaker { get; set; }
+
+    /// <summary>The same for what a layer draws beside the scene: asked on every click, after a tool's own
+    /// taker, so that a click elsewhere also tells it that its pick is over.</summary>
+    internal Func<Point, bool>? StandInClickTaker { get; set; }
+
+    /// <summary>What the tool shelf's gizmo moves in place of the selection, while it is picked.</summary>
+    internal IGizmoStandIn? PickedStandIn { get; set; }
+
+    // The stand-in a drag began on: it ends on the same one, whatever was picked or unpicked meanwhile.
+    private IGizmoStandIn? _draggedStandIn;
+
+    /// <summary>The mesh drawn under a pixel of the viewport, the scene's or a layer's; null where there is none.</summary>
+    internal GpuMesh? MeshAt(Point pos) => PickMesh(pos, out _);
 
     /// <summary>
     /// The triangle of a mesh node under a screen pixel, as the eye has it: of the first level of detail, and
@@ -1280,6 +1306,13 @@ public sealed class D3DImageHost : ViewportControl, ITransformGizmoHost, IBoxGiz
         }
         Rnd.SetPickedTriangleLines(lines, colours);
     }
+
+    /// <summary>Draws a tool window's own marks over the scene - coloured line segments in world space, two
+    /// points and two colours a line. An empty list takes them away.</summary>
+    internal void ShowToolMarks(IReadOnlyList<Vector3> lines, IReadOnlyList<Vector4> colours) => Rnd?.SetToolMarkLines(lines, colours);
+
+    /// <summary>The ray a pixel of the viewport looks along, in world space.</summary>
+    internal (Vector3 Origin, Vector3 Direction) ViewportRay(Point pos) => BuildViewportRay(pos);
 
     /// <summary>Raised by a click on the scene while the Loading zones layer is shown: the world point clicked
     /// and the zone picked there, or null when no zone's box holds the point.</summary>
@@ -1512,17 +1545,22 @@ public sealed class D3DImageHost : ViewportControl, ITransformGizmoHost, IBoxGiz
     public GizmoMode GizmoMode { get; set; } = GizmoMode.None;
 
     /// <summary>True when at least one transformable frame object is selected and a manipulation tool is active.</summary>
-    public bool HasGizmoTarget => GizmoMode != GizmoMode.None && Selection.AnyTransformable();
+    public bool HasGizmoTarget => GizmoMode != GizmoMode.None && (PickedStandIn != null || Selection.AnyTransformable());
 
     /// <summary>True when something transformable is selected, whatever the tool shelf says — the modal
     /// transforms are keyboard-started and work under the Select tool too.</summary>
-    public bool CanTransformSelection => Selection.AnyTransformable();
+    public bool CanTransformSelection => PickedStandIn != null || Selection.AnyTransformable();
 
     /// <summary>World pivot the gizmo sits at (cached group centroid — see SelectionController).</summary>
-    public Vector3 GizmoPivot => Selection.GizmoPivot;
+    public Vector3 GizmoPivot => PickedStandIn?.Pivot ?? Selection.GizmoPivot;
 
     /// <inheritdoc cref="TransformEditController.GizmoBeginDrag"/>
-    public void GizmoBeginDrag(GizmoMode mode) => Editing.GizmoBeginDrag(mode);
+    public void GizmoBeginDrag(GizmoMode mode)
+    {
+        _draggedStandIn = PickedStandIn;
+        if (_draggedStandIn != null) _draggedStandIn.Begin(mode);
+        else Editing.GizmoBeginDrag(mode);
+    }
 
     /// <inheritdoc cref="TransformEditController.LastGizmoBaseline"/>
     internal TransformEditController.GizmoBaseline? LastGizmoBaseline => Editing.LastGizmoBaseline;
@@ -1531,13 +1569,39 @@ public sealed class D3DImageHost : ViewportControl, ITransformGizmoHost, IBoxGiz
     internal void ClearGizmoBaseline() => Editing.ClearGizmoBaseline();
 
     /// <inheritdoc cref="TransformEditController.GizmoApplyWorldDelta"/>
-    public void GizmoApplyWorldDelta(Matrix4x4 totalWorldDelta) => Editing.GizmoApplyWorldDelta(totalWorldDelta);
+    public void GizmoApplyWorldDelta(Matrix4x4 totalWorldDelta)
+    {
+        if (_draggedStandIn != null) _draggedStandIn.Apply(totalWorldDelta);
+        else Editing.GizmoApplyWorldDelta(totalWorldDelta);
+    }
 
     /// <inheritdoc cref="TransformEditController.GizmoEndDrag"/>
-    public void GizmoEndDrag() => Editing.GizmoEndDrag();
+    public void GizmoEndDrag()
+    {
+        if (_draggedStandIn is { } standIn)
+        {
+            _draggedStandIn = null;
+            standIn.End();
+        }
+        else
+        {
+            Editing.GizmoEndDrag();
+        }
+    }
 
     /// <inheritdoc cref="TransformEditController.GizmoCancelDrag"/>
-    public void GizmoCancelDrag() => Editing.GizmoCancelDrag();
+    public void GizmoCancelDrag()
+    {
+        if (_draggedStandIn is { } standIn)
+        {
+            _draggedStandIn = null;
+            standIn.Cancel();
+        }
+        else
+        {
+            Editing.GizmoCancelDrag();
+        }
+    }
 
     /// <summary>Frames the selection: tweens the camera onto the selected objects' combined bounds and makes
     /// their centre the point the camera orbits and zooms around. False when nothing measurable is selected.</summary>

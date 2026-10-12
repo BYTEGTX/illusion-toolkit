@@ -1,0 +1,275 @@
+<Window x:Class="Illusion.Views.CarWorkshopWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Car Workshop"
+        Width="760" SizeToContent="Height"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <!-- What the game does to a material, as a tag: read at a glance down the list. -->
+        <Style x:Key="Chip" TargetType="Border">
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Padding" Value="6,1" />
+            <Setter Property="Margin" Value="0,0,5,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="ChipText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+    </Window.Resources>
+
+    <!-- Tools → Car workshop…: what turns a clone into a car of its own, for the car on the stage. Four pages -
+         its materials and what the game does to them, its lights, its winter twin, and a check of what only
+         the game would show. Each button runs the job the matching car tool of the MCP server runs, so the
+         refusals are the same; nothing is typed that can be picked. The window stays open beside the stage.
+         Visual language comes from the shared EditorStyles dictionary, like LoadZonesWindow. -->
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="24,18,24,0">
+            <RadioButton x:Name="PaintTab" Style="{StaticResource PreviewModeToggle}" GroupName="CarWorkshopPage"
+                         Content="Paint and materials" Padding="12,5" Margin="0,0,6,0" IsChecked="True" Checked="Page_Checked" />
+            <RadioButton x:Name="LightsTab" Style="{StaticResource PreviewModeToggle}" GroupName="CarWorkshopPage"
+                         Content="Lights" Padding="12,5" Margin="0,0,6,0" Checked="Page_Checked" />
+            <RadioButton x:Name="WinterTab" Style="{StaticResource PreviewModeToggle}" GroupName="CarWorkshopPage"
+                         Content="Winter twin" Padding="12,5" Margin="0,0,6,0" Checked="Page_Checked" />
+            <RadioButton x:Name="CheckTab" Style="{StaticResource PreviewModeToggle}" GroupName="CarWorkshopPage"
+                         Content="Check" Padding="12,5" Checked="Page_Checked" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="24,14,24,20">
+
+            <!-- ── Paint and materials ── -->
+            <StackPanel x:Name="PaintPage">
+                <TextBlock Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,0,0,10"
+                           Text="Click a part of the car in the view to find its material; pick a material here and it is outlined on the car. The tags say what the game does to it on this car - a copy of the paint stays bare grey until it has the paint's tags." />
+                <Grid Margin="9,0,9,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="54" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="270" />
+                        <ColumnDefinition Width="110" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="1" Style="{StaticResource DimLabel}" Text="Material" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource DimLabel}" Text="On this car the game gives it" />
+                </Grid>
+                <Border BorderBrush="{StaticResource EdgeFaint}" BorderThickness="1" CornerRadius="4" ClipToBounds="True">
+                    <Grid>
+                        <ListBox x:Name="MaterialList" Height="300" BorderThickness="0" Background="Transparent"
+                                 ItemContainerStyle="{StaticResource PickerItem}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 SelectionChanged="MaterialList_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="54" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="270" />
+                                            <ColumnDefinition Width="110" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Width="46" Height="27" CornerRadius="3" Background="#22FFFFFF"
+                                                HorizontalAlignment="Left" ClipToBounds="True">
+                                            <Image Source="{Binding Thumb}" Stretch="UniformToFill" />
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="12" Foreground="White"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Border Style="{StaticResource Chip}" Background="#3D6FD9"
+                                                    Visibility="{Binding Paint, Converter={StaticResource BoolToVis}}"
+                                                    ToolTip="Painted in the colour the car is given">
+                                                <TextBlock Style="{StaticResource ChipText}" Text="car colour" />
+                                            </Border>
+                                            <Border Style="{StaticResource Chip}" Background="#8A6A3A"
+                                                    Visibility="{Binding Dirt, Converter={StaticResource BoolToVis}}"
+                                                    ToolTip="Gets dirty, and burns with the car">
+                                                <TextBlock Style="{StaticResource ChipText}" Text="dirt" />
+                                            </Border>
+                                            <Border Style="{StaticResource Chip}" Background="#7A5AA8"
+                                                    Visibility="{Binding Dents, Converter={StaticResource BoolToVis}}"
+                                                    ToolTip="Deforms with the body in a crash">
+                                                <TextBlock Style="{StaticResource ChipText}" Text="dents" />
+                                            </Border>
+                                            <Border Style="{StaticResource Chip}" Background="#3E8E6A"
+                                                    Visibility="{Binding Interior, Converter={StaticResource BoolToVis}}"
+                                                    ToolTip="Lit as the inside of the car">
+                                                <TextBlock Style="{StaticResource ChipText}" Text="interior" />
+                                            </Border>
+                                            <TextBlock Text="nothing - drawn as it is" FontSize="11"
+                                                       Foreground="{StaticResource TextDim}" VerticalAlignment="Center"
+                                                       Visibility="{Binding Plain, Converter={StaticResource BoolToVis}}" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="3" Text="{Binding NoteText}" FontSize="11"
+                                                   Foreground="{StaticResource TextDim}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock x:Name="MaterialEmpty" Style="{StaticResource DimLabel}" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" Visibility="Collapsed" />
+                    </Grid>
+                </Border>
+
+                <TextBlock x:Name="MaterialText" Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,10,0,10"
+                           MinHeight="30" Text="Pick a material." />
+
+                <DockPanel LastChildFill="False">
+                    <Button x:Name="OwnCopyBtn" DockPanel.Dock="Left" Style="{StaticResource AccentButton}" Height="30"
+                            Padding="14,0" Content="Make my own copy…" IsEnabled="False" Click="OwnCopy_Click"
+                            ToolTip="A copy of the picked material under a new name, with your pictures in it, put on the car in its place" />
+                    <Button x:Name="DeleteMaterialBtn" DockPanel.Dock="Right" Style="{StaticResource NeutralButton}" Height="30"
+                            Padding="12,0" Margin="8,0,0,0" Content="Delete…" IsEnabled="False" Click="DeleteMaterial_Click"
+                            ToolTip="Takes a material you added out of the library. The car must not be drawn with it." />
+                    <Button x:Name="ForgetBtn" DockPanel.Dock="Right" Style="{StaticResource NeutralButton}" Height="30"
+                            Padding="12,0" Margin="8,0,0,0" Content="Stop" IsEnabled="False" Click="Forget_Click"
+                            ToolTip="The game stops painting, dirtying and deforming the picked material on this car" />
+                    <Button x:Name="LikeBtn" DockPanel.Dock="Right" Style="{StaticResource NeutralButton}" Height="30"
+                            Padding="12,0" Margin="8,0,0,0" Content="Apply" IsEnabled="False" Click="Like_Click" />
+                    <ComboBox x:Name="LikeCombo" DockPanel.Dock="Right" Width="190" Height="28" Margin="8,0,0,0"
+                              IsEnabled="False" SelectionChanged="LikeCombo_SelectionChanged"
+                              ToolTip="The material the picked one was copied from: the picked one is painted, dirtied and deformed the same way" />
+                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource DimLabel}" VerticalAlignment="Center"
+                               Text="Treat it like" />
+                </DockPanel>
+            </StackPanel>
+
+            <!-- ── Lights ── -->
+            <StackPanel x:Name="LightsPage" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,0,0,10"
+                           Text="Every light is marked on the car in the view: pick one here, or click its mark there. A light belongs to a bone of the body - the piece of the mesh on that bone glows, and the light shines from where the bone stands. A lamp in a new place needs a bone of its own, and the lamp's mesh on that bone (made in Blender)." />
+                <Grid Margin="9,0,9,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="60" />
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="170" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource DimLabel}" Text="Bone" />
+                    <TextBlock Grid.Column="1" Style="{StaticResource DimLabel}" Text="Kind" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource DimLabel}" Text="Side" />
+                    <TextBlock Grid.Column="3" Style="{StaticResource DimLabel}" Text="Shines as" />
+                    <TextBlock Grid.Column="4" Style="{StaticResource DimLabel}" Text="Goes dark without" />
+                </Grid>
+                <Border BorderBrush="{StaticResource EdgeFaint}" BorderThickness="1" CornerRadius="4" ClipToBounds="True">
+                    <Grid>
+                        <ListBox x:Name="LightList" Height="250" BorderThickness="0" Background="Transparent"
+                                 ItemContainerStyle="{StaticResource PickerItem}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 SelectionChanged="LightList_SelectionChanged" MouseDoubleClick="LightList_DoubleClick">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="100" />
+                                            <ColumnDefinition Width="60" />
+                                            <ColumnDefinition Width="140" />
+                                            <ColumnDefinition Width="170" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Bone}" FontSize="12" Foreground="White"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding KindText}" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Side}" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="3" Text="{Binding ModelText}" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="4" Text="{Binding CheckText}" FontSize="11"
+                                                   Foreground="{StaticResource TextDim}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock x:Name="LightEmpty" Style="{StaticResource DimLabel}" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" Visibility="Collapsed" />
+                    </Grid>
+                </Border>
+
+                <TextBlock x:Name="LightText" Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,10,0,10"
+                           MinHeight="30" />
+
+                <DockPanel LastChildFill="False">
+                    <Button x:Name="AddLightBtn" DockPanel.Dock="Left" Style="{StaticResource AccentButton}" Height="30"
+                            Padding="14,0" Content="Add light…" Click="AddLight_Click" />
+                    <Button x:Name="ChangeLightBtn" DockPanel.Dock="Left" Style="{StaticResource NeutralButton}" Height="30"
+                            Padding="12,0" Margin="8,0,0,0" Content="Change…" IsEnabled="False" Click="ChangeLight_Click" />
+                    <Button x:Name="RemoveLightBtn" DockPanel.Dock="Left" Style="{StaticResource NeutralButton}" Height="30"
+                            Padding="12,0" Margin="8,0,0,0" Content="Remove" IsEnabled="False" Click="RemoveLight_Click" />
+                    <Button x:Name="BeaconBtn" DockPanel.Dock="Right" Style="{StaticResource NeutralButton}" Height="30"
+                            Padding="12,0" Margin="8,0,0,0" Content="Add roof beacon…" Click="Beacon_Click"
+                            ToolTip="The police cars' turning light: two bones at the lamp and a light of the beacon kind" />
+                    <Button x:Name="BoneBtn" DockPanel.Dock="Right" Style="{StaticResource NeutralButton}" Height="30"
+                            Padding="12,0" Content="Add bone…" Click="Bone_Click"
+                            ToolTip="A new bone of the body's rig, for a lamp where the car has none" />
+                </DockPanel>
+            </StackPanel>
+
+            <!-- ── Winter twin ── -->
+            <StackPanel x:Name="WinterPage" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,0,0,14"
+                           Text="The game keeps every car twice: the summer archive and a winter one it loads under snow. The two hold the same model and differ in a few materials, textures and the effects file. So the car is made once, in summer, and the winter twin is made from it here - last, after everything else is saved, and again after any later change." />
+                <TextBlock Style="{StaticResource DimLabel}" Text="The game's car this one was made from" Margin="0,0,0,4" />
+                <ComboBox x:Name="WinterReference" IsEditable="True" IsTextSearchEnabled="True" Margin="0,0,0,6"
+                          SelectionChanged="Reference_Changed" TextBoxBase.TextChanged="Reference_Changed"
+                          ToolTip="Its own summer and winter archives show what winter changes: which materials, which textures" />
+                <TextBlock Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,0,0,14"
+                           Text="A material of your own takes its winter twin when the library has one named the same with ^zima at the end (the copy window makes it)." />
+                <Border Background="{StaticResource FillHairline}" BorderBrush="{StaticResource EdgeFaint}"
+                        BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,14" MinHeight="150">
+                    <TextBlock x:Name="WinterText" FontSize="12" Foreground="White" TextWrapping="Wrap"
+                               Text="Nothing made yet." />
+                </Border>
+                <DockPanel LastChildFill="False">
+                    <Button x:Name="WinterBtn" DockPanel.Dock="Left" Style="{StaticResource AccentButton}" Height="30"
+                            Padding="14,0" Content="Make the winter twin" IsEnabled="False" Click="Winter_Click" />
+                </DockPanel>
+            </StackPanel>
+
+            <!-- ── Check ── -->
+            <StackPanel x:Name="CheckPage" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,0,0,14"
+                           Text="Looks at the saved car for what the editor and Blender do not show and the game does: bone weights that do not add up, vertices on no bone, vertices far from the car, triangles of no area - and, against the car it was made from, hidden channels a new panel got wrong." />
+                <TextBlock Style="{StaticResource DimLabel}" Text="Compare with the car it was made from (optional)" Margin="0,0,0,4" />
+                <ComboBox x:Name="CheckReference" IsEditable="True" IsTextSearchEnabled="True" Margin="0,0,0,14"
+                          ToolTip="Left empty, only the checks that need no other car are made" />
+                <Border Background="{StaticResource FillHairline}" BorderBrush="{StaticResource EdgeFaint}"
+                        BorderThickness="1" CornerRadius="4" Padding="12,10" Margin="0,0,0,14">
+                    <ScrollViewer Height="210" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock x:Name="CheckHeadline" FontSize="14" FontWeight="SemiBold" Foreground="White"
+                                       TextWrapping="Wrap" Text="Not checked yet." />
+                            <TextBlock x:Name="CheckBody" FontSize="12" Foreground="{StaticResource TextSecondary}"
+                                       TextWrapping="Wrap" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+                <DockPanel LastChildFill="False">
+                    <Button x:Name="CheckBtn" DockPanel.Dock="Left" Style="{StaticResource AccentButton}" Height="30"
+                            Padding="14,0" Content="Check the car" Click="Check_Click" />
+                </DockPanel>
+            </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="2" Background="{StaticResource FillHairline}" BorderBrush="{StaticResource EdgeFaint}"
+                BorderThickness="0,1,0,0" Padding="24,14">
+            <DockPanel LastChildFill="False">
+                <TextBlock x:Name="FootText" DockPanel.Dock="Left" Style="{StaticResource DimLabel}" MaxWidth="590"
+                           TextWrapping="Wrap" VerticalAlignment="Center"
+                           Text="What is done here is written to the car's working copy at once and cannot be undone with Ctrl+Z. Build packs it into the game and keeps a backup of the archive it replaces." />
+                <Button DockPanel.Dock="Right" Style="{StaticResource NeutralButton}" MinWidth="80" Height="32"
+                        Content="Close" IsCancel="True" Click="Close_Click" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,124 @@
+<Window x:Class="Illusion.Views.CarLightWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Light"
+        Width="520" SizeToContent="Height"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <!-- Car workshop → Lights → Add light… / Change… / Add bone… / Add roof beacon…: one window in four
+         guises, like CarToolWindow. It only asks; the workshop window runs the job with what was answered.
+         Everything that can be picked is picked - the bones of the rig, the kinds the game's cars have, the
+         light models of cars_universal - and a place is three numbers in the car's own space, in metres. -->
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="24,20,24,20">
+            <TextBlock x:Name="IntroText" Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,0,0,14" />
+
+            <StackPanel x:Name="LightRows">
+                <TextBlock Style="{StaticResource DimLabel}" Text="Bone the lamp is on" Margin="0,0,0,4" />
+                <ComboBox x:Name="BoneCombo" IsTextSearchEnabled="True" Margin="0,0,0,12" SelectionChanged="Field_Changed"
+                          ToolTip="The piece of the body skinned to this bone glows, and the light shines from where the bone stands" />
+
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Style="{StaticResource DimLabel}" Text="Kind" Margin="0,0,0,4" />
+                        <ComboBox x:Name="KindCombo" DisplayMemberPath="Title" SelectionChanged="Field_Changed"
+                                  ToolTip="What the lamp is to the game, and so what switches it on" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Style="{StaticResource DimLabel}" Text="Side" Margin="0,0,0,4" />
+                        <ComboBox x:Name="SideCombo" SelectionChanged="Field_Changed"
+                                  ToolTip="Which side's indicator it follows. A lamp in the middle is written as left, as the police beacon is." />
+                    </StackPanel>
+                </Grid>
+
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Style="{StaticResource DimLabel}" Text="Shines as" Margin="0,0,0,4" />
+                        <ComboBox x:Name="ModelCombo" DisplayMemberPath="Title" SelectionChanged="Field_Changed"
+                                  ToolTip="The light it throws on the road and the flare seen from afar" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Style="{StaticResource DimLabel}" Text="Glow strength (optional)" Margin="0,0,0,4" />
+                        <TextBox x:Name="PowerBox" Padding="6,4" TextChanged="Field_Changed"
+                                 ToolTip="How strongly the lit piece glows. The game's cars write 1.2 and 2. Left empty: as its kind is written." />
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Style="{StaticResource DimLabel}" Text="Goes dark when this part is wrecked" Margin="0,0,0,4" />
+                <ComboBox x:Name="CheckCombo" IsTextSearchEnabled="True" SelectionChanged="Field_Changed"
+                          ToolTip="The part the lamp sits on: a headlight on a wing dies with the wing" />
+            </StackPanel>
+
+            <StackPanel x:Name="PlaceRows">
+                <StackPanel x:Name="NameRows">
+                    <TextBlock Style="{StaticResource DimLabel}" Text="Name of the new bone" Margin="0,0,0,4" />
+                    <TextBox x:Name="NameBox" Padding="6,4" Margin="0,0,0,12" MaxLength="63" TextChanged="Field_Changed"
+                             ToolTip="As the game's cars name theirs: 'light front L2', 'light roof'" />
+                </StackPanel>
+                <TextBlock x:Name="ParentLabel" Style="{StaticResource DimLabel}" Margin="0,0,0,4" />
+                <ComboBox x:Name="ParentCombo" IsTextSearchEnabled="True" Margin="0,0,0,12" SelectionChanged="Field_Changed" />
+
+                <TextBlock Style="{StaticResource DimLabel}" Text="Where it stands, in metres from the car's middle" Margin="0,0,0,4" />
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="XBox" Grid.Column="0" Padding="6,4" TextChanged="Field_Changed" />
+                    <TextBox x:Name="YBox" Grid.Column="2" Padding="6,4" TextChanged="Field_Changed" />
+                    <TextBox x:Name="ZBox" Grid.Column="4" Padding="6,4" TextChanged="Field_Changed" />
+                </Grid>
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Style="{StaticResource DimLabel}" Text="to the side (0 is the middle)" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource DimLabel}" Text="along the car (+ is the front)" />
+                    <TextBlock Grid.Column="4" Style="{StaticResource DimLabel}" Text="height" />
+                </Grid>
+
+                <TextBlock Style="{StaticResource DimLabel}" Text="How far the lamp reaches from that point, metres" Margin="0,0,0,4" />
+                <TextBox x:Name="ReachBox" Padding="6,4" Width="150" HorizontalAlignment="Left" TextChanged="Field_Changed"
+                         ToolTip="Half the size of what will hang on the bone: the game uses it to tell when the lamp is in view" />
+            </StackPanel>
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="{StaticResource FillHairline}" BorderBrush="{StaticResource EdgeFaint}"
+                BorderThickness="0,1,0,0" Padding="24,14">
+            <DockPanel LastChildFill="False">
+                <TextBlock x:Name="HintText" DockPanel.Dock="Left" Style="{StaticResource DimLabel}" MaxWidth="280"
+                           TextWrapping="Wrap" VerticalAlignment="Center" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource NeutralButton}" MinWidth="80" Height="32" Margin="0,0,8,0"
+                            Content="Cancel" IsCancel="True" Click="Cancel_Click" />
+                    <Button x:Name="RunBtn" Style="{StaticResource AccentButton}" MinWidth="92" Height="32"
+                            IsEnabled="False" IsDefault="True" Click="Run_Click" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -11,6 +11,8 @@ public partial class MainWindow
 {
     private HideTrianglesWindow? _hideTriangles;
     private LoadZonesWindow? _loadZones;
+    private InteriorsWindow? _interiors;
+    private ArchiveMaterialsWindow? _archiveMaterials;
     private StreamMapWindow? _streamMap;
 
     // The mirror item says in its tooltip why it cannot run, instead of failing on the click.
@@ -53,6 +55,46 @@ public partial class MainWindow
 
     private void HideTriangles_Click(object sender, RoutedEventArgs e) =>
         ShowTool(_hideTriangles, () => new HideTrianglesWindow(Viewport) { Owner = this }, w => _hideTriangles = w);
+
+    private void Interiors_Click(object sender, RoutedEventArgs e) =>
+        ShowTool(_interiors, () => new InteriorsWindow(Viewport, InteriorLayer, () => InteriorsToggle.IsChecked = true) { Owner = this },
+            w => _interiors = w);
+
+    // The Interiors layer: every interior standing inside the loaded part of the map, drawn where it stands.
+    // Made the first time it is asked for - reading it costs nothing until then.
+    private InteriorStandIns? _interiorLayer;
+
+    private InteriorStandIns InteriorLayer
+    {
+        get
+        {
+            if (_interiorLayer == null)
+            {
+                _interiorLayer = new InteriorStandIns(Viewport);
+                Closed += (_, _) => _interiorLayer.Dispose();
+            }
+            return _interiorLayer;
+        }
+    }
+
+    private void InteriorsLayer_Changed(object sender, RoutedEventArgs e)
+    {
+        if (Viewport == null) return;
+        bool on = InteriorsToggle.IsChecked == true;
+        if (!on && _interiorLayer == null) return;
+        System.Windows.Input.Mouse.OverrideCursor = System.Windows.Input.Cursors.Wait;
+        try
+        {
+            InteriorLayer.Shown = on;
+        }
+        finally
+        {
+            System.Windows.Input.Mouse.OverrideCursor = null;
+        }
+    }
+
+    private void ArchiveMaterials_Click(object sender, RoutedEventArgs e) =>
+        ShowTool(_archiveMaterials, () => new ArchiveMaterialsWindow(Viewport, null) { Owner = this }, w => _archiveMaterials = w);
 
     private void LoadZones_Click(object sender, RoutedEventArgs e) =>
         ShowTool(_loadZones, () => new LoadZonesWindow(Viewport) { Owner = this }, w => _loadZones = w);

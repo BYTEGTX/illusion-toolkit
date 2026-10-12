@@ -10,6 +10,8 @@ internal static class ToolText
     private static readonly (string Tool, string Menu)[] Wording =
     [
         ("blender_end first", "leave the Blender edit first (Tab)"),
+        ("(search_materials spells them)", ""),
+        ("save them first (editor_save)", "save them first (Ctrl+S)"),
         ("editor_save first", "save first (Ctrl+S)"),
         ("call editor_open_area first", "open a district first"),
         ("editor_open_area first", "open a district first"),

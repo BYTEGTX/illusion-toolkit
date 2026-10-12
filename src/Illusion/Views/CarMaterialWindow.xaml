@@ -1,0 +1,55 @@
+<Window x:Class="Illusion.Views.CarMaterialWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Make My Own Copy"
+        Width="600" SizeToContent="Height"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <!-- Car workshop → Paint and materials → Make my own copy…: a material of the car's own, made from one it
+         is drawn with. Three things a modder otherwise does one by one, and gets grey paint when one is
+         forgotten: the copy with its pictures (material_variant), the car's meshes re-pointed at it, and the
+         game told to treat it like the original (car_material_like). The winter twin of the material is made
+         in the same go where the original has one. -->
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="24,20,24,20">
+            <TextBlock x:Name="IntroText" Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,0,0,14" />
+
+            <TextBlock Style="{StaticResource DimLabel}" Text="Name of the new material" Margin="0,0,0,4" />
+            <TextBox x:Name="NameBox" Padding="6,4" Margin="0,0,0,14" MaxLength="60" TextChanged="Field_Changed"
+                     ToolTip="Letters, digits and '_'. Other mods must not use the same name: start it with the car's." />
+
+            <TextBlock Style="{StaticResource DimLabel}" Text="Its textures - pick a picture for the ones that change" Margin="0,0,0,4" />
+            <Border BorderBrush="{StaticResource EdgeFaint}" BorderThickness="1" CornerRadius="4" Padding="10,6" Margin="0,0,0,6">
+                <StackPanel x:Name="SamplerRows" />
+            </Border>
+            <TextBlock Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,0,0,14"
+                       Text="A picture is a PNG, BMP, TIFF or JPEG with sides that are powers of two (512, 1024…). It is written into the car's archive as a texture. A texture left alone stays the original's." />
+
+            <CheckBox x:Name="UseBox" IsChecked="True" Margin="0,0,0,8" />
+            <CheckBox x:Name="LikeBox" IsChecked="True" Margin="0,0,0,8" />
+            <CheckBox x:Name="WinterBox" IsChecked="True"
+                      ToolTip="The same copy of the original's winter material, with the same pictures. The winter twin of the car takes it by its name." />
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="{StaticResource FillHairline}" BorderBrush="{StaticResource EdgeFaint}"
+                BorderThickness="0,1,0,0" Padding="24,14">
+            <DockPanel LastChildFill="False">
+                <TextBlock x:Name="HintText" DockPanel.Dock="Left" Style="{StaticResource DimLabel}" MaxWidth="350"
+                           TextWrapping="Wrap" VerticalAlignment="Center" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource NeutralButton}" MinWidth="80" Height="32" Margin="0,0,8,0"
+                            Content="Cancel" IsCancel="True" Click="Cancel_Click" />
+                    <Button x:Name="RunBtn" Style="{StaticResource AccentButton}" MinWidth="92" Height="32"
+                            Content="Make" IsEnabled="False" Click="Run_Click" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

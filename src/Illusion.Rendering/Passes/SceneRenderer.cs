@@ -177,6 +177,16 @@ public sealed unsafe class SceneRenderer : IDisposable
 
     private static readonly object PickedKey = new();
 
+    /// <summary>
+    /// Replaces the marks a tool window draws over the scene to show what its lists are about (the car
+    /// workshop: where a material is on the car, where a light's bone stands). A set of its own beside the
+    /// picked triangles, drawn the same way and gone with an empty list.
+    /// </summary>
+    public void SetToolMarkLines(IReadOnlyList<Vector3> lineVertices, IReadOnlyList<Vector4> colors) =>
+        _pickedRenderer.SetDistrict(ToolMarkKey, lineVertices, colors);
+
+    private static readonly object ToolMarkKey = new();
+
     private static readonly object HitBoxKey = new();
 
     /// <summary>Removes one archive's rig (district unload).</summary>

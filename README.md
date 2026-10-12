@@ -295,6 +295,19 @@ over the same job the matching tool runs, so a result does not depend on who ask
   backup kept beside the file.
 - **Clone car…**, **Replace a car…**, **Export car for multiplayer…** (resource editor) - the three
   car jobs described under the MCP server below, starting from the car on the stage.
+- **Car workshop…** (resource editor) - follows the car on the stage: its materials with what the
+  game does to each (car colour, dirt, dents, interior) and *Make my own copy…* of one with
+  pictures of your own, its lights marked at their bones (add, change, remove, a bone, a roof
+  beacon placed by a click on the car), the winter twin, the check. A click on the car picks the
+  material under the cursor.
+- **Interiors…** (map editor) - the interiors the game can stand at a place: drag one onto the map
+  to stand it there, pick a stood one by a click and move or turn it with the tool shelf's gizmo,
+  remove it; each is one step of Undo. The **Interiors** layer draws the rooms of the interiors
+  that stand in the loaded scenery. An interior a DLC ships is copied into the base game when it
+  is first stood.
+- **Materials of an archive…** (both editors) - the materials an archive is drawn with and where
+  each comes from (shipped, changed, added), saved as a list or as a material library for whoever
+  receives the archive.
 
 ### MCP server
 

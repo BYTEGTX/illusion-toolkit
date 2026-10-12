@@ -509,6 +509,9 @@ public partial class ResourceEditorWindow : Window
 
     // ── Save · Build · Restore ──
 
+    /// <summary>Saves the stage for a tool window that works on the saved archive (the car workshop).</summary>
+    internal void SaveForTool() => SaveEdits();
+
     private void SaveEdits()
     {
         CommitFocusedField();

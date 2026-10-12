@@ -460,7 +460,65 @@ public sealed class ShopPlaces
     private string ArchiveOf(CityShopsTable.Shop shop) =>
         _table.Areas.FirstOrDefault(a => Same(a.Archive, shop.Name))?.Archive ?? shop.Name.ToLowerInvariant();
 
-    private static FileInfo ArchiveFile(string archive) => new(Path.Combine(MafiaEnvironment.PcFolder, "sds", "shops", archive + ".sds"));
+    /// <summary>
+    /// Where an interior's archive is: under <c>pc\sds\shops</c> - or, for an interior a DLC ships, in that
+    /// DLC's own <c>sds\shops</c>, which the base game's table names all the same. When neither has it the
+    /// answer is the place under <c>pc\sds\shops</c> where it would be, which does not exist.
+    /// </summary>
+    public static FileInfo ArchiveFile(string archive)
+    {
+        var own = new FileInfo(Path.Combine(MafiaEnvironment.PcFolder, "sds", "shops", archive + ".sds"));
+        if (own.Exists) return own;
+        string dlcs = Path.Combine(MafiaEnvironment.PcFolder, "dlcs");
+        if (!Directory.Exists(dlcs)) return own;
+        foreach (string dlc in Directory.EnumerateDirectories(dlcs).Order(StringComparer.OrdinalIgnoreCase))
+        {
+            var theirs = new FileInfo(Path.Combine(dlc, "sds", "shops", archive + ".sds"));
+            if (theirs.Exists) return theirs;
+        }
+        return own;
+    }
+
+    /// <summary>The DLC an archive belongs to (the name of its folder under <c>pc\dlcs</c>), or null for one of
+    /// the base game's.</summary>
+    public static string? DlcOf(FileInfo archive)
+    {
+        string dlcs = Path.Combine(MafiaEnvironment.PcFolder, "dlcs") + Path.DirectorySeparatorChar;
+        if (!archive.FullName.StartsWith(dlcs, StringComparison.OrdinalIgnoreCase)) return null;
+        string rest = archive.FullName[dlcs.Length..];
+        int cut = rest.IndexOf(Path.DirectorySeparatorChar);
+        return cut > 0 ? rest[..cut] : null;
+    }
+
+    /// <summary>
+    /// Brings an interior a DLC ships into the base game: its archive is copied to <c>pc\sds\shops</c>, where
+    /// the game looks for an interior whatever is being played - a DLC's own folder is read only while that DLC
+    /// runs. Nothing is overwritten; the game's cached list of its files is reset so that the next start finds
+    /// the copy. Does nothing for an interior the base game already has. Null on success.
+    /// </summary>
+    /// <param name="from">The DLC it was brought from; null when nothing had to be brought.</param>
+    public string? BringIn(string shop, out string? from)
+    {
+        from = null;
+        CityShopsTable.Shop? row = _table.Shops.FirstOrDefault(s => Is(s, shop));
+        if (row == null) return null;       // the caller's own refusal says the name is not one
+        string archive = ArchiveOf(row);
+        FileInfo found = ArchiveFile(archive);
+        if (!found.Exists) return $"this installation has no archive of {row.Name}: neither pc\\sds\\shops nor a DLC has {archive}.sds";
+        if (DlcOf(found) is not { } dlc) return null;
+        var own = new FileInfo(Path.Combine(MafiaEnvironment.PcFolder, "sds", "shops", archive + ".sds"));
+        try
+        {
+            File.Copy(found.FullName, own.FullName, overwrite: false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return $"{archive}.sds could not be copied from {dlc} into pc\\sds\\shops: {ex.Message}";
+        }
+        GameFileIndex.Reset();
+        from = dlc;
+        return null;
+    }
 
     private FrameResource? SceneOf(string archive)
     {

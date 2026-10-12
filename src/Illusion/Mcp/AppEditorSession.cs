@@ -1736,7 +1736,13 @@ internal sealed class AppEditorSession : IEditorSession
         if (point is not { Length: 3 } || point.Any(v => !float.IsFinite(v))) return "point is [x, y, z], finite numbers";
         return ChangeShopPlaces(apply, "add the place", out place, out archives,
             (Assets.World.ShopPlaces places, out Assets.World.ShopPlaces.PlaceInfo? made) =>
-                places.Add(shop.Trim(), new Vector3(point[0], point[1], point[2]), turn, loadHalf, unloadHalf, halfHeight, out made));
+            {
+                made = null;
+                // An interior a DLC ships is in the DLC's folder: the base game has to have it before it can
+                // stand anywhere in the base game. Only when the place is really written.
+                if (apply && places.BringIn(shop.Trim(), out _) is { } notBrought) return notBrought;
+                return places.Add(shop.Trim(), new Vector3(point[0], point[1], point[2]), turn, loadHalf, unloadHalf, halfHeight, out made);
+            });
     }
 
     public string? ShopPlaceDelete(string marker, bool apply, out ShopPlaceInfo? place, out IReadOnlyList<string> archives)

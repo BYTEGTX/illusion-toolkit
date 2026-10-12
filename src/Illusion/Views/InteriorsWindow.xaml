@@ -1,0 +1,125 @@
+<Window x:Class="Illusion.Views.InteriorsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Interiors"
+        Width="700" SizeToContent="Height"
+        ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <!-- Tools → Interiors…: the shops, diners and flats the game keeps under shops\, placed the way a prop is -
+         an interior is dragged from the list onto the map and stands where it is dropped. The jobs are the
+         ones behind shop_places, shop_place_add, shop_place_delete, shop_create and shop_delete. Nothing is
+         typed: the place is the drop, the turn is two buttons, and a place that was added is taken out again
+         with one. Stays open beside the viewport, like LoadZonesWindow. -->
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="24,20,24,20">
+            <TextBlock FontSize="13" Foreground="White" TextWrapping="Wrap" Margin="0,0,0,12"
+                       Text="Drag an interior onto the map. It stands where you drop it; click it there and move or turn it with the gizmo, like any object." />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="250" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <TextBox x:Name="FilterBox" Padding="6,4" Margin="0,0,0,6" TextChanged="Filter_Changed"
+                             ToolTip="Type a part of a name" />
+                    <Border BorderBrush="{StaticResource EdgeFaint}" BorderThickness="1" CornerRadius="4" ClipToBounds="True">
+                        <ListBox x:Name="ShopList" Height="260" BorderThickness="0" Background="Transparent"
+                                 ItemContainerStyle="{StaticResource PickerItem}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 SelectionChanged="ShopList_SelectionChanged"
+                                 PreviewMouseLeftButtonDown="ShopList_PreviewMouseLeftButtonDown"
+                                 PreviewMouseMove="ShopList_PreviewMouseMove">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="12" Foreground="White"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding CountText}" FontSize="11"
+                                                   Foreground="{StaticResource TextDim}" VerticalAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2">
+                    <TextBlock x:Name="PlacesLabel" Style="{StaticResource DimLabel}" Text="Where it stands" Margin="0,5,0,9" />
+                    <Border BorderBrush="{StaticResource EdgeFaint}" BorderThickness="1" CornerRadius="4" ClipToBounds="True">
+                        <Grid>
+                            <ListBox x:Name="PlaceList" Height="220" BorderThickness="0" Background="Transparent"
+                                     ItemContainerStyle="{StaticResource PickerItem}"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     SelectionChanged="PlaceList_SelectionChanged" MouseDoubleClick="PlaceList_DoubleClick">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="150" />
+                                                <ColumnDefinition Width="46" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="{Binding Marker}" FontSize="12" Foreground="White"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Text="{Binding AtText}" FontSize="11"
+                                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Text="{Binding NoteText}" FontSize="11"
+                                                       Foreground="{StaticResource TextDim}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock x:Name="PlaceEmpty" Style="{StaticResource DimLabel}" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" TextWrapping="Wrap" Margin="16,0" TextAlignment="Center"
+                                       Text="Pick an interior to see where it stands." />
+                        </Grid>
+                    </Border>
+                    <DockPanel LastChildFill="False" Margin="0,8,0,0">
+                        <Button x:Name="GoBtn" DockPanel.Dock="Left" Style="{StaticResource NeutralButton}" Height="28"
+                                Padding="12,0" Content="Go there" IsEnabled="False" Click="Go_Click"
+                                ToolTip="The camera goes to the picked place (double-click does the same). Open its district to see the street round it." />
+                        <Button x:Name="RemovePlaceBtn" DockPanel.Dock="Right" Style="{StaticResource NeutralButton}" Height="28"
+                                Padding="12,0" Content="Remove" IsEnabled="False" Click="RemovePlace_Click"
+                                ToolTip="Takes out a place you added. A place the game ships with stays." />
+                    </DockPanel>
+                </StackPanel>
+            </Grid>
+
+            <DockPanel LastChildFill="False" Margin="0,14,0,0">
+                <TextBlock DockPanel.Dock="Left" Style="{StaticResource DimLabel}" VerticalAlignment="Center"
+                           Text="To get a copy of your own to rebuild inside, name it before you drag:" />
+                <TextBox x:Name="NewNameBox" DockPanel.Dock="Left" Width="150" Padding="6,4" Margin="8,0,0,0" MaxLength="31"
+                         TextChanged="Name_Changed"
+                         ToolTip="Left empty, the drop gives the interior itself one more place. With a name (3 to 31 lower-case letters, digits and '_'), the drop makes a new interior like it: an archive of its own under shops\." />
+                <Button x:Name="DeleteShopBtn" DockPanel.Dock="Right" Style="{StaticResource NeutralButton}" Height="28"
+                        Padding="12,0" Content="Delete interior…" IsEnabled="False" Click="DeleteShop_Click"
+                        ToolTip="Takes an interior you made out of the table. Its archive stays." />
+            </DockPanel>
+            <TextBlock x:Name="StatusText" Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,10,0,0" MinHeight="16" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="{StaticResource FillHairline}" BorderBrush="{StaticResource EdgeFaint}"
+                BorderThickness="0,1,0,0" Padding="24,14">
+            <DockPanel LastChildFill="False">
+                <TextBlock DockPanel.Dock="Left" Style="{StaticResource DimLabel}" MaxWidth="520" TextWrapping="Wrap"
+                           VerticalAlignment="Center"
+                           Text="The interiors are drawn by the Interiors layer of the map (the layers button above the view), which this window switches on. A drop is written to the working copies at once (the interior's archive, city_univers and cityshops.bin). Build packs them, and every player of a server needs those files." />
+                <Button DockPanel.Dock="Right" Style="{StaticResource NeutralButton}" MinWidth="80" Height="32"
+                        Content="Close" IsCancel="True" Click="Close_Click" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -53,6 +53,11 @@
                 <MenuItem Header="Export car for multiplayer…" Click="ExportCar_Click"
                           ToolTip="Write a built car out as a multiplayer resource folder" />
                 <Separator />
+                <MenuItem Header="Car workshop…" Click="CarWorkshop_Click"
+                          ToolTip="The car on the stage: its own paint and materials, its lights and beacon, its winter twin, and a check of what only the game shows" />
+                <MenuItem Header="Materials of this archive…" Click="ArchiveMaterials_Click"
+                          ToolTip="What the archive is drawn with, and the materials that have to travel with it saved as a library" />
+                <Separator />
                 <MenuItem Header="Stream map…" Click="StreamMap_Click"
                           ToolTip="Find and replace in StreamMapa.bin - archive paths, line and group names" />
             </MenuItem>
