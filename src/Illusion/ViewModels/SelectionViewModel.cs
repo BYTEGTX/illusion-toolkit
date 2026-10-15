@@ -807,6 +807,9 @@ public sealed class SelectionViewModel : INotifyPropertyChanged
     // ── Transform (local) ──
     private Vector3 _pos, _rotDeg, _scale = Vector3.One;
 
+    /// <summary>The smallest scale a field edit may set on any axis (see <see cref="ApplyTransform"/>).</summary>
+    internal const float MinScale = 1e-3f;
+
     public float PosX { get => _pos.X; set => SetPos(0, value); }
     public float PosY { get => _pos.Y; set => SetPos(1, value); }
     public float PosZ { get => _pos.Z; set => SetPos(2, value); }
@@ -829,6 +832,15 @@ public sealed class SelectionViewModel : INotifyPropertyChanged
     private void ApplyTransform()
     {
         if (_node?.Source is not IFrameNode fn) return;
+        // A scale of (nearly) nothing on any axis is never an edit anyone means, and it cannot be taken back: a
+        // bone carries the bones below it by the inverse of where it stood, and a flattened bone has no inverse,
+        // so an undo puts the bone back and leaves its whole rig flat. Refused here, the field shows what holds.
+        if (MathF.Abs(_scale.X) < MinScale || MathF.Abs(_scale.Y) < MinScale || MathF.Abs(_scale.Z) < MinScale)
+        {
+            ReadTransform();
+            RaiseTransformFields();
+            return;
+        }
         _applyingField = true;
         try
         {

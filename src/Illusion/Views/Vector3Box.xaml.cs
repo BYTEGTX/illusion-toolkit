@@ -196,7 +196,10 @@ public partial class Vector3Box : UserControl
         try { text = Clipboard.GetText(); }
         catch { return; }
 
-        if (ParseTriple(text) is not { } t) return;
+        // Fewer than three numbers fill only the first fields; the rest keep what they hold. Filling them with 0
+        // turned a Scale of 1, 1, 1 into 2, 0, 0 for a clipboard holding one number, and a bone scaled to nothing
+        // takes the whole rig flat with it.
+        if (ParseTriple(text, (X, Y, Z)) is not { } t) return;
         X = t.X;
         Y = t.Y;
         Z = t.Z;
@@ -209,15 +212,17 @@ public partial class Vector3Box : UserControl
 
     /// <summary>
     /// Lenient paste parse: pulls the first up-to-three numbers out of arbitrary text (brackets / labels /
-    /// separators are ignored). Missing components keep 0. Null when the text holds no number at all.
+    /// separators are ignored). Missing components keep <paramref name="keep"/>'s (0 when none is given). Null
+    /// when the text holds no number at all.
     /// </summary>
-    internal static (double X, double Y, double Z)? ParseTriple(string? text)
+    internal static (double X, double Y, double Z)? ParseTriple(
+        string? text, (double X, double Y, double Z) keep = default)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
         MatchCollection matches = NumberRegex.Matches(text);
         if (matches.Count == 0) return null;
 
-        var v = new double[3];
+        var v = new[] { keep.X, keep.Y, keep.Z };
         int n = Math.Min(3, matches.Count);
         for (int i = 0; i < n; i++)
             double.TryParse(matches[i].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out v[i]);

@@ -1523,6 +1523,13 @@ internal static class BoneProbes
             Check("…and everything attached to it",
                 attached.All(x => Approx(x.Frame.WorldTransform.Translation, x.Before, 1e-3f)));
 
+            // ── A flattened pose is refused ── a scale of zero on one axis has no inverse, and the bones below
+            // follow by the inverse of where a bone stood: once flat, an undo could only put the bone back.
+            Matrix4x4[] restBefore = [.. model.RestTransform ?? []];
+            bone.LocalTransform = Matrix4x4.CreateScale(1f, 1f, 0f) * beforeLocal;
+            Check("a pose with a zero scale is refused and the rig is left as it was",
+                bone.LocalTransform == beforeLocal && (model.RestTransform ?? []).SequenceEqual(restBefore));
+
             // ── Save ──
             bone.LocalTransform = moved;
             SdsWriter.SaveFrameResource(fr, car);

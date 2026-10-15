@@ -76,6 +76,10 @@ public sealed class BoneNodeAdapter : IFrameNode, IPropertySource
         set
         {
             if (_index < 0 || _index >= Rest.Length) return;
+            // A pose with no inverse (a scale of zero on some axis) is refused, whoever asks — a field, a gizmo
+            // drag, a script. The descendants follow a bone by the inverse of where it stood, so once a bone is
+            // flat nothing can carry them back: an undo restores the bone and leaves the whole rig flattened.
+            if (!Matrix4x4.Invert(Affine(value), out _)) return;
 
             // The motion this bone just underwent, in model space. Computed BEFORE the bone is overwritten.
             Matrix4x4[] rest = Rest;

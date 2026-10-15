@@ -471,6 +471,11 @@ internal static class EditorProbes
                 Check($"ParseTriple lenient '{variant}'", p is { } q && Near(q.X, 1.5) && Near(q.Y, 2) && Near(q.Z, 3.25), p?.ToString() ?? "null");
             }
             Check("ParseTriple no-number → null", Views.Vector3Box.ParseTriple("nothing here") == null);
+            // A paste of fewer than three numbers fills the first fields and keeps the rest: one number pasted
+            // into a Scale of 1, 1, 1 used to give 2, 0, 0, and a bone flattened like that takes its rig with it.
+            var one = Views.Vector3Box.ParseTriple("Mass 2", (1, 1, 1));
+            Check("ParseTriple with one number keeps the other two fields",
+                one is { } o1 && Near(o1.X, 2) && Near(o1.Y, 1) && Near(o1.Z, 1), one?.ToString() ?? "null");
 
             // Anti-clip mechanism: the block layout's three fields are the whole row and MUST be free to shrink
             // (no hard MinWidth), so three of them always fit a narrow panel row instead of overflowing its right
