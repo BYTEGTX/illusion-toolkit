@@ -215,6 +215,11 @@ internal static class ProbeRunner
             case "--probe-car-clone":
                 CarCloneProbes.RunCarCloneProbe();
                 return true;
+            // A person cloned under a new name, on scratch extractions of shipped archives.
+            // Output: %TEMP%\illusion_person_clone.txt
+            case "--probe-person-clone":
+                PersonCloneProbes.RunPersonCloneProbe();
+                return true;
             // A car exported as a multiplayer resource folder, from a clone made and packed on scratch copies.
             // Output: %TEMP%\illusion_car_m2o.txt
             case "--probe-car-m2o":

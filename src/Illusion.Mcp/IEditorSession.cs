@@ -148,6 +148,9 @@ public interface IEditorSession
     /// success.</summary>
     string? CloneCar(string source, string name, bool traffic, string? title, out CarCloneInfo? result);
 
+    /// <summary>A person's archive copied under a new name (people_clone): built, with each person's new root name.</summary>
+    string? ClonePerson(string source, string name, IReadOnlyDictionary<string, string>? roots, out PersonCloneInfo? result);
+
     /// <summary>Packs one archive's working copy back into its .sds, keeping a backup of what it replaces — for an
     /// edit made in the working copy itself (a script, a table) that no editor session tracks. With
     /// <paramref name="memoryFrom"/>, the working copy first takes the memory requirements that archive states

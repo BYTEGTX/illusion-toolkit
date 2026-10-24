@@ -1188,6 +1188,23 @@ internal sealed class AppEditorSession : IEditorSession
         }
     }
 
+    public string? ClonePerson(string source, string name, IReadOnlyDictionary<string, string>? roots, out PersonCloneInfo? result)
+    {
+        result = null;
+        if (EnsureEnvironment() is { } notReady) return notReady;
+        if (OpenWithEdits(source) is { } unsaved) return unsaved;
+        try
+        {
+            if (Assets.People.PersonCloner.Clone(source, name, roots, out string? refusal) is not { } outcome) return refusal;
+            result = new PersonCloneInfo(outcome.Archive, outcome.People, outcome.Notes);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return "could not write the archive (is the game running?): " + ex.Message;
+        }
+    }
+
     // A car's archives, summer and winter, by archive or model name.
     private static IEnumerable<FileInfo> CarArchives(string car)
     {

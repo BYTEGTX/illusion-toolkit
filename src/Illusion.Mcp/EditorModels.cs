@@ -35,6 +35,9 @@ public sealed record ResourceStatus(
 /// holds (Car, Character, CityCrash, …), its size, and whether it already has a working copy.</summary>
 public sealed record LibraryItem(string Name, string Path, string Kind, long Size, bool Extracted);
 
+/// <summary>What people_clone made: the archive it built, each person's root renamed (old -> new), and notes.</summary>
+public sealed record PersonCloneInfo(string Archive, IReadOnlyDictionary<string, string> People, IReadOnlyList<string> Notes);
+
 /// <summary>A car cloned under a new name: the vehicle id the tables gave it, how many traffic rows pick it,
 /// the id of the text holding its own title (null when it shares the source car's), each archive written with
 /// the backup taken of it (null for a new one), and what was left out.</summary>

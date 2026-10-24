@@ -66,6 +66,7 @@ internal static class McpProbes
         "car_tuning",
         "car_tuning_set",
         "car_clone",
+        "people_clone",
         "archive_build",
         "car_export_m2o",
         "car_substitute",

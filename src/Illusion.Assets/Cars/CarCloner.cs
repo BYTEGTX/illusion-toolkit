@@ -520,7 +520,7 @@ public static partial class CarCloner
     // Renames every buffer the geometry draws from — in the geometry blocks and in the pool files, where a
     // buffer keeps its place. "Shubert_38.Root.L0.VB0" becomes "<name>.Root.L0.VB0"; a name that does not start
     // with the model's gets the new name in front.
-    private static int GiveOwnBuffers(SdsManifest manifest, FrameResource frame, string model, string name)
+    internal static int GiveOwnBuffers(SdsManifest manifest, FrameResource frame, string model, string name)
     {
         var renamed = new Dictionary<ulong, HashName>();
         HashName Renamed(HashName old)
@@ -574,7 +574,7 @@ public static partial class CarCloner
         return renamed.Count;
     }
 
-    private static void CopyTree(string from, string to)
+    internal static void CopyTree(string from, string to)
     {
         foreach (string file in Directory.EnumerateFiles(from, "*", SearchOption.AllDirectories))
         {

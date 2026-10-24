@@ -204,6 +204,37 @@ public sealed class EditorTools
         }
     }
 
+    [McpServerTool(Name = "people_clone")]
+    [Description("Make a new PERSON out of an existing one, to live BESIDE the source instead of replacing it - the way car_clone makes a car: copies a character archive's WORKING COPY (so changes made to it travel along) to <name>.sds in the same folder under pc\\sds, gives each person's root frame a new name (one person: the name in capitals; several: the name and the old one, or as 'roots' says) and every vertex and index buffer a name of its own (the engine keeps buffers by name across all loaded archives; shared names would draw one shape on both people), then builds it and resets the game's file list. Materials and textures stay the source's - make them the clone's own with material_variant (new material + pictures under new names) and mesh_materials, and archive_materials writes the .mtl that travels with it. Nothing registers a person: who uses it names its archive and root frame. The game must not be running.")]
+    public static async Task<string> PeopleClone(
+        IEditorSession editor,
+        IUiThreadMarshal ui,
+        [Description("The character archive to copy: its path under pc\\sds without the extension, e.g. 'traffic/chlid1' or 'script/m01_vojaci3'.")] string source,
+        [Description("The new archive's name: a lower-case letter, then a-z, 0-9 and '_', at most 31 characters, e.g. 'm2rp_medic'.")] string name,
+        [Description("Which people to rename and to what, as a JSON object of old root name -> new: {\"CORPORAL\": \"M2RP_SWAT\"}. Only the listed roots are renamed then. Omit to rename every named root frame by the rule.")] string? roots = null)
+    {
+        try
+        {
+            Dictionary<string, string>? map = null;
+            if (!string.IsNullOrWhiteSpace(roots))
+            {
+                map = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(roots);
+                if (map == null) return ToolResult.Invalid("roots is not a JSON object of names");
+            }
+            PersonCloneInfo? result = null;
+            string? refused = await ui.RunAsync(() => editor.ClonePerson(source, name, map, out result));
+            return refused != null ? ToolResult.Invalid(refused) : ToolResult.Json(new { success = true, clone = result });
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            return ToolResult.Invalid("roots is not valid JSON: " + ex.Message);
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
+
     [McpServerTool(Name = "archive_build")]
     [Description("Pack ONE archive's working copy (the extracted folder under <game>\\resources) back into its .sds, keeping a timestamped backup of the archive it replaces. For an edit made directly in the working copy — a script, a table file — that no editor session tracks; editor_build remains the way to pack what the editors changed. This OVERWRITES a game file: the game must not be running.")]
     public static async Task<string> ArchiveBuild(
