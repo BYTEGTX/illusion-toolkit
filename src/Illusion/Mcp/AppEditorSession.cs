@@ -527,7 +527,7 @@ internal sealed class AppEditorSession : IEditorSession
     public string? EndBlenderSession()
     {
         if (TargetHost is not { } host) return TargetNotOpen;
-        if (host.BridgeEditedCount == 0) return "no Blender edit session is open";
+        if (!host.BridgeSessionToEnd) return "no Blender edit session is open";
         host.EndBridgeEditSession();
         return null;
     }
@@ -1817,7 +1817,28 @@ internal sealed class AppEditorSession : IEditorSession
             {
                 // an archive the game does not have yet: packed here, where nothing is overwritten - and the game
                 // finds archives through a cached list of files that a new one is not in
-                Assets.Sds.SdsWriter.PackResult packed = Assets.Sds.SdsWriter.PackSds(shopArchive, createBackup: false);
+                Assets.Sds.SdsWriter.PackResult packed;
+                try
+                {
+                    packed = Assets.Sds.SdsWriter.PackSds(shopArchive, createBackup: false);
+                }
+                catch (Exception ex) when (ZoneWrites.IsFileTrouble(ex))
+                {
+                    // Without its archive the interior must not be in the table either: the rows, the volumes and
+                    // the new working copy go back out, so the same call can simply be made again.
+                    IReadOnlyList<string> left = places.TakeBackSave();
+                    try
+                    {
+                        shopArchive.Refresh();
+                        if (shopArchive.Exists) shopArchive.Delete();
+                    }
+                    catch (Exception again) when (ZoneWrites.IsFileTrouble(again))
+                    {
+                        left = [.. left, shopArchive.FullName];
+                    }
+                    return $"could not {what}: the new archive could not be packed ({ex.Message})"
+                        + (left.Count == 0 ? " - nothing was kept" : " - and these could not be put back: " + string.Join(", ", left));
+                }
                 notes?.Add($"packed the new archive {packed.Archive}");
                 notes?.Add(Assets.Sds.GameFileIndex.Reset()
                     ? "the game's file list (vfs.bin) was reset - the next start rebuilds it with the new archive"
