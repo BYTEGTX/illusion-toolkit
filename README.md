@@ -24,7 +24,7 @@
 
 ## Overview
 
-**Illusion** is a modding toolkit for **Mafia II** and **Mafia II: Definitive Edition**, developed by
+**IllusionToolkit** is a modding toolkit for **Mafia II** and **Mafia II: Definitive Edition**, developed by
 the [Mafia II: Online](https://github.com/mafia2online) team. It reads the game's native archives,
 exposes their contents for editing in a 3D viewport or in Blender, and packs the result back into the
 game with a versioned backup of every file it replaces.
@@ -40,7 +40,7 @@ The toolkit is built around three components:
   a local Model Context Protocol endpoint, so automated workflows run through the same code paths and
   undo history as the interactive editors.
 
-Illusion is under active development; see [Known limits](#known-limits) for what is not covered yet.
+IllusionToolkit is under active development; see [Known limits](#known-limits) for what is not covered yet.
 The format research it builds on is credited under [Credits](#credits).
 
 ## Getting started
