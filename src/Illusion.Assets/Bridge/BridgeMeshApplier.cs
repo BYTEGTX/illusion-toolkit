@@ -1557,10 +1557,13 @@ public static class BridgeMeshApplier
         var runs = new Dictionary<(int Split, int Piece, int Slot), List<(int First, int Count)>>();
         for (int f = 0; f < faces; f++)
         {
+            // A piece's face range starts at a 16-bit INDEX: a face past the 21845th cannot be named by any range.
+            // It is still drawn - the material slots, which the drawing goes by, start at 32-bit indices - but it
+            // is in no piece (no bullet pre-filter box knows it). Left out, not refused: a car may carry up to
+            // 65535 faces in its slots.
             if (((long)f * 3) + 3 > ushort.MaxValue)
             {
-                reason = "the mesh has more triangles than a face range can address (65535 indices)";
-                return false;
+                continue;
             }
             foreach ((int Split, int Piece) at in membership[f])
             {
