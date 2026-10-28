@@ -183,6 +183,37 @@ Everything the MCP server can do to a scene, the menu can too:
   `StreamMap*.bin`, previewed, with a backup).
 - **Clone car...**, **Replace a car...**, **Export car for multiplayer...** in the resource editor.
 
+## Exporting maps for M2O
+
+**Build SDS…** and **Export…** open the same window: the edited archives with a tick each, and a destination.
+**Game folder** packs them into the game (each kept in its `backups` folder first). **M2O resource** and
+**Patch files** write them to a folder instead and leave the game's archives alone. An export is saved as a
+project (its name, its archives, its folder, kept in `<game>\resources\.exports\`); the window opens on the last
+one, with its archives ticked and every other edited archive listed unticked, and exporting again replaces that
+folder whole. A folder is only ever replaced when an export wrote it (it carries `.illusion-export`).
+
+An M2O resource holds a `stream` folder that goes into the server resource as it is (`resources\<name>\stream`).
+Every file sits at the game path it stands for, so no manifest is needed:
+
+- `stream/sds/<path>.sds.patch` for an archive the game ships: a native patch (the format the game's own
+  DLC uses) against the shipped bytes. The exporter finds those bytes in the archive itself, or in the oldest
+  backup the toolkit (`backups\`) or MafiaToolkit (`BackupSDS\`) kept of it, and refuses to export without them.
+  The shipped archives and their SHA-256 are listed in `src/Illusion.Assets/Sds/StockArchives.txt`.
+- `stream/sds/<path>.sds` for an archive the game does not have, such as a new interior under `shops\`.
+- `stream/materials/<archive>.mtl` for the materials an archive adds. A material the game ships cannot be
+  changed this way (the game keeps its own definition), and a mesh naming a material no library defines
+  stops the export.
+
+**Patch files** are the same files at their game paths, without the `stream` folder around them.
+
+Summer and winter are archives of their own (`<name>.sds`, `<name>_z.sds`): edit both to change both seasons.
+Archives that match the game are skipped, and a failed export leaves the folder as it was. Folder and file
+names must hold only `a-z`, `0-9` and `_`.
+
+The isolated `Illusion.exe --probe-m2o-export` check exercises the export layout, patch output, new archives,
+refusals, failure cleanup, re-export over its own folder, and export projects. It writes its report and a
+window render to `%TEMP%/illusion_m2o_export.txt` and `%TEMP%/illusion_m2o_export.png`.
+
 ## Blender bridge
 
 <img width="2592" height="1426" alt="Blender bridge" src="https://github.com/user-attachments/assets/6a9f2b01-964a-4fb9-9f8c-f6c715cb9ff0" />
