@@ -390,6 +390,14 @@ public partial class MainWindow : Window
         if (BuildWindow.Run(this, Viewport) is { } report) ShowBuildResult(report);
     }
 
+    // File → Export…: the Build window opened on an export destination - the same list of archives, written to an
+    // M2O resource or to patch files instead of the game, as a saved export project.
+    private void Export_Click(object sender, RoutedEventArgs e)
+    {
+        CommitFocusedField();
+        if (BuildWindow.Run(this, Viewport, ExportDestination.M2oResource) is { } report) ShowBuildResult(report);
+    }
+
     // Reports a finished build. A fully-successful build is a "Built N archives" notice the user can silence for
     // good with "Don't show this again" (persisted to settings) — once silenced, successful builds are quiet.
     // A whole/partial failure is always shown; those need attention regardless of the preference.
