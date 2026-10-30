@@ -22,9 +22,16 @@ public sealed class SceneDocumentAdapter : ISceneDocument
     private bool _nameTableDirty;
     private readonly Bridge.SdsGeometrySaver.PoolState _pools = new();
 
+    // The objects in the order the name table on disk indexes them. The table names each entry by its object's
+    // POSITION, and any object coming or going moves others: a removed one shifts every later one, and a new one
+    // takes the slot one left. Not only an object that is on the table itself - an undone import of a plain mesh
+    // moved an interior's markers off theirs, the next load dropped them, and the interior no longer loaded.
+    private object[] _tableOrder;
+
     public SceneDocumentAdapter(FrameResource frame, FileInfo sourceArchive, ActorPlacements? placements = null)
     {
         _frame = frame;
+        _tableOrder = [.. frame.FrameObjects.Values];
         SourceArchive = sourceArchive;
         Placements = placements ?? ActorPlacements.Empty;
     }
@@ -194,6 +201,17 @@ public sealed class SceneDocumentAdapter : ISceneDocument
     /// of archive takes the plain frame writer, which is what it has always been.
     /// </para>
     /// </summary>
+    private bool ObjectsMoved()
+    {
+        if (_frame.FrameObjects.Count != _tableOrder.Length) return true;
+        int i = 0;
+        foreach (object value in _frame.FrameObjects.Values)
+        {
+            if (!ReferenceEquals(value, _tableOrder[i++])) return true;
+        }
+        return false;
+    }
+
     public string SaveWorkingCopy()
     {
         string extracted = MafiaEnvironment.ExtractedDir(SourceArchive);
@@ -205,11 +223,17 @@ public sealed class SceneDocumentAdapter : ISceneDocument
             // and scene indices that serializing the resource finalises, so it has to run second. Verified a
             // semantic fixpoint across every district (see --probe-nametable).
             written = SdsWriter.SaveFrameResource(_frame, SourceArchive);
-            if (_nameTableDirty)
+            bool moved = ObjectsMoved();
+            if (_nameTableDirty || moved)
             {
                 SdsWriter.SaveFrameNameTable(_frame, SourceArchive);
                 _nameTableDirty = false;
+                _tableOrder = [.. _frame.FrameObjects.Values];
             }
+            // The actor packs name their frames by position too (a scene reference's FrameIndex), and are written
+            // only when an actor was edited: deleting two props before the actors left every actor after them
+            // pointing two objects off. Rewritten here, re-pointed, whenever the objects moved.
+            if (moved && Placements.Packs.Count > 0) Sds.SdsActorsSaver.SaveWorkingCopy(Placements);
             // Textures an import carried in that the scene no longer names — an undone import, or one a scene
             // closed without saving took with it — leave with this save.
             Sds.ArchiveCarry.SweepUnused(extracted, _frame);
@@ -253,7 +277,7 @@ public sealed class SceneDocumentAdapter : ISceneDocument
     private string? SaveCar(string extracted)
     {
         Cars.Car? car = Cars.Car.SaveScene(
-            extracted, _frame, _movedMarkerFrames, _movedCollisionStubs, _nameTableDirty, out string? lost);
+            extracted, _frame, _movedMarkerFrames, _movedCollisionStubs, _nameTableDirty || ObjectsMoved(), out string? lost);
         _isCar = car != null;
         if (car == null) return null;
 
@@ -263,6 +287,7 @@ public sealed class SceneDocumentAdapter : ISceneDocument
             _movedMarkerFrames.Clear();
             _movedCollisionStubs.Clear();
             _nameTableDirty = false;
+            _tableOrder = [.. _frame.FrameObjects.Values];
         }
         return FrameResourceFile(extracted) ?? car.PrefabPath;
     }
