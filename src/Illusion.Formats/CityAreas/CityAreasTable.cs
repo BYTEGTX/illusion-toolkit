@@ -105,10 +105,12 @@ public sealed class CityAreasTable
 
     /// <summary>
     /// Adds a line for a volume: the one or two districts it keeps loaded. A district the table has not named
-    /// yet is added to its names. The byte is 1 for two districts and 0 for one - what the shipped table has.
+    /// yet is added to its names. The byte is 1 for two districts and 0 for one - what the shipped table has -
+    /// unless <paramref name="flag"/> gives it: a line carried over from another table keeps its own (Joe's
+    /// Adventures has lines that name two districts and carry 0).
     /// </summary>
     /// <returns>Null on success, otherwise why not; nothing is changed on a refusal.</returns>
-    public string? Add(string name, string target1, string? target2)
+    public string? Add(string name, string target1, string? target2, byte? flag = null)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Any(c => c is < ' ' or > '~')) return "the zone's name must be plain Latin text";
         if (Find(name) != null) return $"the table already has a line for '{name}'";
@@ -138,7 +140,7 @@ public sealed class CityAreasTable
         ushort second = string.IsNullOrWhiteSpace(target2) ? None : Offset(target2);
         if (grown.Length >= None) return "the table's district names would not fit its 16-bit offsets";
         _districts = grown;
-        _entries.Add((name, first, second, (byte)(second == None ? 0 : 1)));
+        _entries.Add((name, first, second, flag ?? (byte)(second == None ? 0 : 1)));
         return null;
     }
 

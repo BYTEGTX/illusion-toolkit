@@ -1090,6 +1090,35 @@ public sealed class EditorTools
         }
     }
 
+    [McpServerTool(Name = "locations_import")]
+    [Description("Carry the LOCATIONS a DLC's own copy of city_univers.sds adds into the base copy - the one free ride (and a multiplayer client) reads. Joe's Adventures ships a city_univers of its own with load zones for its districts (dlcdamroad, dlcyacht, dlccathouse, dlcsupermarket) and volumes for its interiors (dlc_port, dlc_lokace_supermarket, ...); none of them is in the base copy. They are taken over as the DLC has them, not made again: each volume whole (most are cut by slanted planes a zone_create box would lose), its frame flags, its cityareas.bin line with its own byte, and the interior's area and shop rows of cityshops.bin. By default: every zone whose line names a district the base table has never named, and every interior the base table has no row for; 'zones' and 'interiors' pick by name instead. A zone whose district, or an interior whose archive, is in neither the game nor the DLC is not carried, and the answer says so for each. By default it only REPORTS; apply=true writes the scene, the frame name table, cityareas.bin and cityshops.bin to the working copy - then archive_build packs city_univers.sds (with a backup). The districts' and interiors' own archives stay in the DLC's folder: the game finds them only while that DLC is mounted. Refused while an editor holds city_univers (Whole map).")]
+    public static async Task<string> LocationsImport(
+        IEditorSession editor,
+        IUiThreadMarshal ui,
+        [Description("The DLC's copy to carry from, by its folder name, e.g. 'cnt_joes_adventures' (zones_at lists the copies).")] string copy,
+        [Description("The zones to carry, by name. Omit for every zone that names a district the base lacks.")] string[]? zones = null,
+        [Description("The interiors to carry, by their cityshops.bin name. Omit for every interior the base table has no row for.")] string[]? interiors = null,
+        [Description("Write the change to the working copy. Default false: report only.")] bool apply = false)
+    {
+        try
+        {
+            LocationsImportInfo? result = null;
+            string? refused = await ui.RunAsync(() => editor.LocationsImport(copy, zones, interiors, apply, out result));
+            return refused != null ? ToolResult.Invalid(refused) : ToolResult.Json(new
+            {
+                success = true,
+                applied = apply,
+                carriedZones = result!.Zones.Count(z => z.Skipped == null),
+                carriedInteriors = result.Interiors.Count(i => i.Skipped == null),
+                result,
+            });
+        }
+        catch (Exception ex)
+        {
+            return ToolResult.Fail(ex);
+        }
+    }
+
     [McpServerTool(Name = "shop_places")]
     [Description("The INTERIORS the game stands in the open city - gun shops, clothes shops, diners, bars, garages, flats - and the places they stand at. Such an interior is an archive under shops\\ that the game loads when the player comes near; one archive can stand at several places (the gun shop at eleven). Without a name: every interior of cityshops.bin with its archive, its actor file and its places as the table has them (marker name, map position). With 'shop': that interior's archive is read too, so each place comes with where its marker stands, how it is turned, the pair of volumes of city_univers that load it there ('LoadZone') and let it go ('UnloadZone'), and whether it was added here ('Added'). A place is added with shop_place_add.")]
     public static async Task<string> ShopPlaces(

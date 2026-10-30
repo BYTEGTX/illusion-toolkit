@@ -173,6 +173,19 @@ public sealed record ShopPlaceInfo(string Shop, string Archive, string Marker, f
 /// file), its actor file, how many entities that file has, and its places.</summary>
 public sealed record ShopInfo(string Name, string? Archive, string ActorFile, int Entities, IReadOnlyList<ShopPlaceInfo> Places);
 
+/// <summary>A load zone of a DLC's copy of city_univers carried into the base copy - or, when <paramref name="Skipped"/>
+/// says why, not carried: its districts and the byte of its cityareas.bin line, its world box and how many planes cut it.</summary>
+public sealed record ImportedZoneInfo(string Name, IReadOnlyList<string> Districts, byte Flag, float[] BoxMin, float[] BoxMax, int Planes, string? Skipped);
+
+/// <summary>An interior of a DLC's cityshops.bin carried into the base table - or, when <paramref name="Skipped"/> says why,
+/// not carried: its archive under <c>shops\</c>, the volumes that load and let go of it, its area rows and places.</summary>
+public sealed record ImportedInteriorInfo(string Name, string Archive, IReadOnlyList<string> Volumes, int AreaRows, int Places, string? Skipped);
+
+/// <summary>What carrying a DLC's locations into the base city_univers does: the zones and interiors, notes on what
+/// does not carry over as it stands, and the working-copy files written (empty when not applied).</summary>
+public sealed record LocationsImportInfo(string Copy, IReadOnlyList<ImportedZoneInfo> Zones, IReadOnlyList<ImportedInteriorInfo> Interiors,
+    IReadOnlyList<string> Notes, IReadOnlyList<string> Written);
+
 /// <summary>A face of a load zone moved - or, when not applied, what moving it would do: from where to where on
 /// its axis (world), the zone's box afterwards, the districts it asks for, and the working-copy file written.</summary>
 /// <paramref name="Copy"/> is which copy of city_univers.sds this is about: "base" or a DLC's folder name.

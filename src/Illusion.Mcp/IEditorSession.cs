@@ -219,6 +219,12 @@ public interface IEditorSession
     /// nothing is written. A zone the game ships with is refused. Null on success.</summary>
     string? ZoneDelete(string name, bool apply, out LoadZoneInfo? zone);
 
+    /// <summary>Carries the load zones and interiors a DLC's own copy of city_univers adds into the base copy, as
+    /// the DLC has them: the volumes whole, their cityareas.bin lines and the cityshops.bin rows. Null names take
+    /// the defaults (zones naming a district the base lacks; interiors the base table has no row for). Without
+    /// <paramref name="apply"/> nothing is written. Null on success.</summary>
+    string? LocationsImport(string copy, string[]? zones, string[]? interiors, bool apply, out LocationsImportInfo? result);
+
     /// <summary>The interiors the game keeps under <c>shops\</c> and the places they stand at, as cityshops.bin has
     /// them. For the one named by <paramref name="shop"/> its archive is read too, so its places come with where
     /// their markers stand and which volumes hold them. Null on success.</summary>

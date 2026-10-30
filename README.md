@@ -273,7 +273,7 @@ client at it:
 claude mcp add --transport http illusion http://127.0.0.1:2010/mcp
 ```
 
-It serves 107 tools in two families. **File tools** read archives, decode actors, frames, collisions,
+It serves 108 tools in two families. **File tools** read archives, decode actors, frames, collisions,
 item descriptions, materials and tables, decompile the game's Lua, inspect textures and rewrite the
 stream map. **Editor tools** drive the running map and resource editors: scene, camera, selection,
 properties, imports, zones, interiors, cars, Blender sessions, save, build, undo and screenshots.

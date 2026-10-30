@@ -1621,6 +1621,41 @@ internal sealed class AppEditorSession : IEditorSession
         }
     }
 
+    public string? LocationsImport(string copy, string[]? zones, string[]? interiors, bool apply, out LocationsImportInfo? result)
+    {
+        result = null;
+        if (EnsureEnvironment() is { } notReady) return notReady;
+        IReadOnlyList<FileInfo> copies = Assets.World.LoadZones.Copies();
+        FileInfo? from = copies.FirstOrDefault(c => string.Equals(Assets.World.LoadZones.CopyName(c), copy?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (from == null || string.Equals(Assets.World.LoadZones.CopyName(from), "base", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"no DLC copy of city_univers.sds named '{copy}' - there are: " + string.Join(", ", copies.Select(Assets.World.LoadZones.CopyName).Where(n => n != "base"));
+        }
+        var archive = new FileInfo(Assets.MafiaEnvironment.CityUniversSds);
+        // asked of a dry run too: one that says "it can be carried" while the write would be refused says nothing
+        if (ZoneWrites.StructureBlocked(archive) is { } blocked) return blocked;
+        try
+        {
+            static string[]? Names(string[]? names) => names is { Length: > 0 } ? [.. names.Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n.Trim())] : null;
+            Assets.World.LocationImport import = Assets.World.LocationImport.Plan(f => Assets.Sds.SdsMeshLoader.EnsureExtracted(f), from,
+                Names(zones), Names(interiors));
+            IReadOnlyList<string> written = apply ? import.Save() : [];
+            if (written.Count > 0) ZoneWrites.Written(archive);
+            result = new LocationsImportInfo(
+                Assets.World.LoadZones.CopyName(from),
+                [.. import.Zones.Select(z => new ImportedZoneInfo(z.Name, [.. new[] { z.District1, z.District2 }.OfType<string>().Where(d => d.Length > 0)],
+                    z.Flag, Xyz(z.Min), Xyz(z.Max), z.Planes, z.Skipped))],
+                [.. import.Interiors.Select(i => new ImportedInteriorInfo(i.Name, i.Archive, i.Volumes, i.AreaRows, i.Places, i.Skipped))],
+                import.Notes,
+                written);
+            return null;
+        }
+        catch (Exception ex) when (ZoneWrites.IsFileTrouble(ex))
+        {
+            return "could not carry the locations into city_univers: " + ex.Message;
+        }
+    }
+
     public string? ZoneDelete(string name, bool apply, out LoadZoneInfo? zone)
     {
         zone = null;

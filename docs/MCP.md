@@ -31,7 +31,7 @@ real install.
 | **Interiors** | `shop_places`, `shop_place_add`, `shop_place_delete`, `shop_create`, `shop_delete` |
 | **Resource editor** | `editor_target`, `resource_list`, `resource_open`, `resource_status`, `car_tuning`, `car_tuning_set` |
 | **Cars** | `car_clone`, `car_substitute`, `car_export_m2o`, `archive_build`, `car_materials`, `car_material_like`, `car_lights`, `car_light_set`, `car_light_remove`, `car_bone_add`, `car_beacon`, `car_collisions`, `car_collision_add`, `car_collision_remove`, `car_winter`, `car_check` |
-| **Loading zones** | `zones_at`, `zones_map`, `zone_move_face`, `zone_create`, `zone_delete` |
+| **Loading zones** | `zones_at`, `zones_map`, `zone_move_face`, `zone_create`, `zone_delete`, `locations_import` |
 | **Blender session** | `blender_open`, `blender_push`, `blender_end` |
 | **Viewport** | `camera_get`, `camera_set`, `camera_look_at`, `camera_frame_selection`, `view_set`, `viewport_screenshot` |
 
@@ -66,6 +66,18 @@ spot: a player who appears inside a zone named `AREA901_FOO_BAR` gets the distri
 district in the table or two - and inside one named `AREA902_FOOXBAR` he does not. With the map
 editor open the new zone is a step of its history; `zone_delete` takes an added zone out again (a
 zone the game ships with is refused). Zones are made in the base game's `city_univers` only.
+
+`locations_import` carries what a DLC's own copy of `city_univers` adds into the base copy, which free ride
+reads: Joe's Adventures' load zones for `dlcdamroad`, `dlcyacht`, `dlccathouse` and `dlcsupermarket`, and the
+volumes and `cityshops.bin` rows of its interiors. Each volume is taken over whole - most are cut by slanted
+planes - with its frame flags and its `cityareas.bin` line, byte included. By default it takes every zone naming
+a district the base table has never named and every interior the base table has no row for, and leaves out
+what points at an archive neither the game nor the DLC has (the DLC references a hotel, a printery and a ring
+that it does not ship). The districts' and interiors' archives stay in the DLC folder, so the game finds them
+only while the DLC is mounted. A base `cityshops.bin` is version 8 and has no room for the extra byte version 9
+gives a row; the answer says when a carried row had it set. The shipped-name lists count these zones and
+interiors as the game's own, so `zone_delete` and `shop_delete` refuse them: a carry is taken back with
+Restore Backup after a Build, or by unpacking city_univers again before one.
 
 **Interiors.** The game stands a shop, a diner or a flat at a place through three things: a marker
 frame inside the interior's archive under `shops\`, a pair of box volumes in `city_univers` that
