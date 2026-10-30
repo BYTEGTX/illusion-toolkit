@@ -282,6 +282,13 @@ public sealed class ShopPlaces
 
         // ---- everything can be done; from here the scene in memory is the new interior's
         holder.Name = new HashName(stem + "00");
+        // the scene folders too: every interior the game ships has folders of names no other one uses (only an
+        // interior and its winter twin share them), and a copy that kept its source's would share them with it
+        int count = 0;
+        foreach (FrameHeaderScene sceneFolder in scene.FrameScenes.Values)
+        {
+            sceneFolder.Name = new HashName(count++ == 0 ? $"scene_{name}" : $"scene_{name}_{count - 1}");
+        }
         // the markers of the places the copied interior stands at are not this one's places
         foreach (CityShopsTable.Place place in source.Places)
         {
