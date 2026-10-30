@@ -35,7 +35,10 @@ public static class TriangleHider
     /// </summary>
     /// <param name="world">The matrix the mesh is drawn at.</param>
     /// <param name="material">Only triangles of slots whose material name contains this, or null for any.</param>
-    public static Plan Find(FrameObjectSingleMesh mesh, Matrix4x4 world, Vector3 min, Vector3 max, string? material = null)
+    /// <param name="invert">Take every triangle that does NOT lie wholly inside the box instead - what is left of
+    /// a copy of a mesh is then only the part inside, such as the painted doors of a facade.</param>
+    public static Plan Find(FrameObjectSingleMesh mesh, Matrix4x4 world, Vector3 min, Vector3 max, string? material = null,
+        bool invert = false)
     {
         ArgumentNullException.ThrowIfNull(mesh);
         const float Slack = 1e-3f;
@@ -74,7 +77,7 @@ public static class TriangleHider
                     Vector3 pa = Vector3.Transform(positions[a], world);
                     Vector3 pb = Vector3.Transform(positions[b], world);
                     Vector3 pc = Vector3.Transform(positions[c], world);
-                    if (!Inside(pa) || !Inside(pb) || !Inside(pc)) continue;
+                    if ((Inside(pa) && Inside(pb) && Inside(pc)) == invert) continue;
                     triangles.Add(new Triangle(lod, name, pa, pb, pc));
                     indices[i + 1] = a;
                     indices[i + 2] = a;

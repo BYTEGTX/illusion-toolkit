@@ -1214,7 +1214,7 @@ internal sealed class AppEditorSession : IEditorSession
     }
 
     public string? HideTriangles(string name, float[] boxMin, float[] boxMax, string? material, bool apply, int sample, string? shared,
-        out HiddenTrianglesInfo? result)
+        bool invert, out HiddenTrianglesInfo? result)
     {
         result = null;
         if (TargetHost is not { } host) return TargetNotOpen;
@@ -1228,7 +1228,7 @@ internal sealed class AppEditorSession : IEditorSession
         if (Resolve(host, name, out SceneNode? node) is { } unresolved) return unresolved;
         if (apply && host.BridgeEditedCount > 0) return "a Blender session is open — blender_end first";
         if (PlanHiddenTriangles(node!, new Vector3(boxMin[0], boxMin[1], boxMin[2]), new Vector3(boxMax[0], boxMax[1], boxMax[2]),
-                material, out Assets.Sds.TriangleHider.Plan? found) is { } notAMesh)
+                material, out Assets.Sds.TriangleHider.Plan? found, invert) is { } notAMesh)
         {
             return notAMesh;
         }
@@ -1253,7 +1253,7 @@ internal sealed class AppEditorSession : IEditorSession
     /// <summary>The triangles of a scene node's mesh whose corners all lie inside a world-space box, and the index
     /// edits that hide them. One implementation for the tool and for Tools → Hide triangles. Null on success.</summary>
     internal static string? PlanHiddenTriangles(SceneNode node, Vector3 min, Vector3 max, string? material,
-        out Assets.Sds.TriangleHider.Plan? plan)
+        out Assets.Sds.TriangleHider.Plan? plan, bool invert = false)
     {
         plan = null;
         if (node.Source is not Assets.Adapters.FrameNodeAdapter { Frame: Formats.Frames.ObjectTypes.FrameObjectSingleMesh mesh } adapter)
@@ -1261,7 +1261,7 @@ internal sealed class AppEditorSession : IEditorSession
             return $"'{node.Name}' is a {node.Kind} — only a mesh has triangles to hide";
         }
         plan = Assets.Sds.TriangleHider.Find(mesh, ((IFrameNode)adapter).WorldTransform, min, max,
-            string.IsNullOrWhiteSpace(material) ? null : material);
+            string.IsNullOrWhiteSpace(material) ? null : material, invert);
         return null;
     }
 
