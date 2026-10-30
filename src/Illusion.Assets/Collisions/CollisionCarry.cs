@@ -10,7 +10,7 @@ namespace Illusion.Assets.Collisions;
 /// <para>
 /// Scenery is not tied to its collision by anything in the scene: the hull is a placement in the archive's
 /// collision resource that happens to stand where the object stands. So the source's placements are found by
-/// position — every one whose hull lies inside the object's footprint — and re-placed by the same rigid move
+/// position — every one whose hull lies inside the object's footprint, or more than half of it does — and re-placed by the same rigid move
 /// that took the object to its new spot. A hull the destination already has (same hash) is shared; one it
 /// lacks is copied with its cooked bytes and sections as they are.
 /// </para>
@@ -67,10 +67,14 @@ public static class CollisionCarry
 
             Matrix4x4 placed = Matrix4x4.CreateFromQuaternion(TransformMath.CollisionEulerToQuaternion(instance.Rotation))
                 * Matrix4x4.CreateTranslation(instance.Position);
-            if (!Inside(triangles.Vertices, placed, min, max)) continue;
+            // A building's hull is often one piece for what draws as several (both floors of a police station,
+            // a lobby and its porch): it lies inside none of them whole, so it goes with the one holding most of it.
+            if (!Inside(triangles.Vertices, placed, min, max) && !MostlyInside(triangles.Vertices, placed, min, max)) continue;
 
             Matrix4x4 moved = placed * move;
             if (!Matrix4x4.Decompose(moved, out _, out Quaternion rotation, out Vector3 position)) continue;
+            // Such a hull is also more than half inside a second piece; carried with the first, it is not placed again.
+            if (target.Instances.Any(i => i.Hash == instance.Hash && Vector3.DistanceSquared(i.Position, position) < 1e-4f)) continue;
             bool known = target.Meshes.Any(m => m.Hash == mesh.Hash) || !added.Add(mesh.Hash);
             hulls.Add(new Hull(
                 new CollisionInstance
@@ -188,6 +192,28 @@ public static class CollisionCarry
             if (p.X < min.X || p.Y < min.Y || p.Z < min.Z || p.X > max.X || p.Y > max.Y || p.Z > max.Z) return false;
         }
         return true;
+    }
+
+    // Whether more than half of the hull's box lies inside the footprint. An axis the hull is flat along (a floor)
+    // counts whole when it lies within the footprint's span on it and not at all when it does not.
+    private static bool MostlyInside(Vector3[] vertices, Matrix4x4 placed, Vector3 min, Vector3 max)
+    {
+        Vector3 lo = new(float.MaxValue), hi = new(float.MinValue);
+        foreach (Vector3 v in vertices)
+        {
+            Vector3 p = Vector3.Transform(v, placed);
+            lo = Vector3.Min(lo, p);
+            hi = Vector3.Max(hi, p);
+        }
+        float share = 1f;
+        for (int axis = 0; axis < 3; axis++)
+        {
+            float a = lo[axis], b = hi[axis], from = min[axis], to = max[axis];
+            share *= b - a < 1e-4f
+                ? (a >= from && a <= to ? 1f : 0f)
+                : Math.Max(0f, Math.Min(b, to) - Math.Max(a, from)) / (b - a);
+        }
+        return share > 0.5f;
     }
 
     private static CollisionMesh Copy(CollisionMesh mesh)
