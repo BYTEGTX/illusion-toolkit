@@ -60,7 +60,7 @@ public enum EntityType : uint
 /// are typed; the entity-init property blobs and the cutscene lookup ride as capsules. The core verifies
 /// every actor by re-encoding it at read time, so the file round-trips byte-exact.
 /// </summary>
-public sealed class ActorsFile
+public sealed partial class ActorsFile
 {
     public const ushort SupportedVersion = 6;
     private const ushort CompressedFlag = 2;

@@ -61,6 +61,8 @@
                 <MenuItem Header="Hide triangles…" Click="HideTriangles_Click"
                           ToolTip="Cut an opening in the selected mesh - a doorway, a pane of glass - without rebuilding it" />
                 <MenuItem x:Name="MirrorWinterItem" Header="Mirror to winter…" Click="MirrorWinter_Click" />
+                <MenuItem Header="Light editor…" Click="LightEditor_Click"
+                          ToolTip="The lights of the loaded area: colour, brightness, range, cone, direction, shadows and sector, with the viewport lit by them" />
                 <Separator />
                 <MenuItem Header="Loading zones…" Click="LoadZones_Click"
                           ToolTip="Which zones make the game load a district at a point, and moving a zone's face" />

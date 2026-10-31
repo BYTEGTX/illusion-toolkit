@@ -24,6 +24,21 @@ public partial class ResourceEditorWindow
         _hideTriangles.Show();
     }
 
+    private LightEditorWindow? _lightEditor;
+
+    private void LightEditor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_lightEditor != null)
+        {
+            _lightEditor.Activate();
+            return;
+        }
+        CommitFocusedField();
+        _lightEditor = new LightEditorWindow(Stage) { Owner = this };
+        _lightEditor.Closed += (_, _) => _lightEditor = null;
+        _lightEditor.Show();
+    }
+
     private void StreamMap_Click(object sender, RoutedEventArgs e)
     {
         if (_streamMap != null)

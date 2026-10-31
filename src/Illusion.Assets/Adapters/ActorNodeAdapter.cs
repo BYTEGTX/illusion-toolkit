@@ -40,7 +40,14 @@ public sealed class ActorNodeAdapter : IFrameNode, IPropertySource
             // Compose→decompose is not bit-exact for the rotation and the scale (the quaternion comes back out
             // of a normalized basis), so a pure drag would rewrite them by ~1e-7 and change bytes that nobody
             // asked to change. Keep the stored values unless the edit actually turned or resized the actor.
-            if (MathF.Abs(Quaternion.Dot(rotation, Actor.Rotation)) < 1f - 1e-6f) Actor.Rotation = rotation;
+            if (MathF.Abs(Quaternion.Dot(rotation, Actor.Rotation)) < 1f - 1e-6f)
+            {
+                // A light is built in the game from the transform inside its behaviour blob, not from the
+                // record: turning the record alone turns nothing there. The pack turns both at once.
+                if (Placements.PackOf(Actor) is { } pack && pack.IsEditableLight(Actor)
+                    && pack.SetLightRotation(Actor, rotation)) { }
+                else Actor.Rotation = rotation;
+            }
             if ((scale - Actor.Scale).LengthSquared() > 1e-12f) Actor.Scale = scale;
             Placements.Refresh(Actor);
         }

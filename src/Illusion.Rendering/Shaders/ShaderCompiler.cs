@@ -20,6 +20,19 @@ Texture2D    DiffuseTex  : register(t0);
 Texture2D    NormalTex   : register(t1);
 Texture2D    SpecularTex : register(t2);
 SamplerState Samp        : register(s0);
+" + LocalLightsCbuffer;
+
+    /// <summary>The local-light preview block (b2), laid out as <see cref="LocalLightConstants"/>. Rides with
+    /// <see cref="SurfaceTextures"/> so every mesh shader declares it; an unbound b2 reads as zeroes, i.e. no
+    /// lights, so viewports that never set it shade exactly as before.</summary>
+    public const string LocalLightsCbuffer = @"
+cbuffer LocalLights : register(b2)
+{
+    float4 LocalLightCount;
+    float4 LocalPosRange[32];
+    float4 LocalColor[32];
+    float4 LocalDirCone[32];
+};
 ";
 
     /// <summary>The Mafia-look lighting fields appended to every mesh cbuffer, after its matrices/LightDir/BaseColor.
@@ -126,6 +139,28 @@ float4 PSMain(PSIn i) : SV_TARGET
     float  cosAngle     = dot(N, L);
     float  ndl          = saturate(cosAngle);
     float3 diffuseLight = ambient + SunColor.rgb * ndl;
+
+    // Local lights (the light editor's preview): Lambert, a smooth fall to nothing at the light's range and a
+    // soft cone edge. No shadows and no baked occlusion — enough to place and tune lights by eye.
+    int localCount = (int)LocalLightCount.x;
+    [loop] for (int li = 0; li < localCount; li++)
+    {
+        float3 toLight = LocalPosRange[li].xyz - i.wpos;
+        float  dist    = length(toLight);
+        float  range   = max(LocalPosRange[li].w, 1e-3);
+        if (dist >= range || dist < 1e-4) continue;
+        float3 Ll   = toLight / dist;
+        float  fall = saturate(1.0 - dist / range);
+        fall *= fall;
+        float  cosHalf = LocalDirCone[li].w;
+        float  cone = 1.0;
+        if (cosHalf > -1.5)
+        {
+            float cosA = dot(-Ll, LocalDirCone[li].xyz);
+            cone = smoothstep(cosHalf, lerp(cosHalf, 1.0, 0.3), cosA);
+        }
+        diffuseLight += LocalColor[li].rgb * (fall * cone * saturate(dot(N, Ll)));
+    }
 
     // Reflection-vector Phong specular + faint sky rim — the full-lighting modes only (Render / Solid /
     // Wireframe). Material Preview (simple) adds neither: no specular-level map sample, no highlight.

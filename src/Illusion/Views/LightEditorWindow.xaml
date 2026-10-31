@@ -1,0 +1,83 @@
+<Window x:Class="Illusion.Views.LightEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Light Editor"
+        Width="760" Height="680" MinWidth="620" MinHeight="480"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+
+    <!-- Tools → Light editor…: the lights of what is open, tuned by eye. The viewport shades the scene with them
+         instead of the sun while the window is open (an approximation: no shadows, no baked occlusion map) and
+         draws each light's reach; every slider let go is one undo step. Visual language comes from the shared
+         EditorStyles dictionary, like Hide Triangles. -->
+
+    <Grid Margin="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="230" />
+            <ColumnDefinition Width="16" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Grid.Column="0" Grid.Row="0">
+            <TextBlock DockPanel.Dock="Top" Style="{StaticResource DimLabel}" Text="Lights" Margin="0,0,0,6" />
+            <Button DockPanel.Dock="Bottom" Style="{StaticResource NeutralButton}" Height="26" Margin="0,8,0,0"
+                    Content="Reload the list" Click="Reload_Click"
+                    ToolTip="Read the lights of what is open again (after an import or a deletion)" />
+            <ListBox x:Name="LightList" SelectionChanged="LightList_SelectionChanged" />
+        </DockPanel>
+
+        <ScrollViewer Grid.Column="2" Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock x:Name="NameText" FontSize="14" Foreground="White" TextTrimming="CharacterEllipsis"
+                           Text="Pick a light in the list or in the viewport" Margin="0,0,0,4" />
+                <TextBlock x:Name="NoteText" Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,0,0,12" />
+
+                <StackPanel x:Name="EditPanel" IsEnabled="False">
+                    <Border x:Name="Swatch" Height="22" CornerRadius="3" Margin="0,0,0,10" Background="#FFFFD080" />
+                    <StackPanel x:Name="ParamsPanel" />
+
+                    <CheckBox x:Name="ShadowsCheck" Content="Casts shadows" Foreground="White" Margin="0,10,0,0"
+                              Click="Shadows_Click"
+                              ToolTip="The game's main ceiling lights and niche spots cast shadows; wall glows and ambient fills do not" />
+                    <CheckBox x:Name="AutoBoundsCheck" Content="Fit the light's box to its reach" Foreground="White"
+                              IsChecked="True" Margin="0,6,0,0"
+                              ToolTip="The game cuts a light off at its box. On: the box follows the range, cone and direction" />
+
+                    <TextBlock Style="{StaticResource DimLabel}" Text="Sector the light belongs to" Margin="0,14,0,4" />
+                    <ComboBox x:Name="SectorCombo" SelectionChanged="Sector_Changed"
+                              ToolTip="A light lights the room of the sector it names. A light copied from another room still names that room's sector" />
+                    <TextBlock x:Name="SectorText" Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,4,0,0" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Style="{StaticResource NeutralButton}" Height="28" Padding="12,0" Content="Select in viewport"
+                                Click="Select_Click" ToolTip="Select the light, so the gizmo moves it" />
+                        <Button Style="{StaticResource NeutralButton}" Height="28" Padding="12,0" Margin="8,0,0,0"
+                                Content="Frame" Click="Frame_Click" ToolTip="Bring the camera to the light" />
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="1" Grid.ColumnSpan="3" BorderBrush="#33FFFFFF" BorderThickness="0,1,0,0" Margin="0,12,0,0" Padding="0,10,0,0">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <CheckBox x:Name="PreviewCheck" Content="Light the viewport with these lights" Foreground="White"
+                              IsChecked="True" Click="Preview_Click" VerticalAlignment="Center"
+                              ToolTip="The sun goes dark and the scene is lit by the lights (no shadows, no baked occlusion map). Render or Material Preview shading" />
+                    <TextBlock Style="{StaticResource DimLabel}" Text="Volumes" Margin="24,0,6,0" VerticalAlignment="Center" />
+                    <ComboBox x:Name="VolumesCombo" Width="120" SelectedIndex="1" SelectionChanged="Volumes_Changed">
+                        <ComboBoxItem Content="All lights" />
+                        <ComboBoxItem Content="Selected light" />
+                        <ComboBoxItem Content="None" />
+                    </ComboBox>
+                </StackPanel>
+                <StackPanel x:Name="GlobalPanel" Margin="0,8,0,0" />
+                <TextBlock x:Name="StatusText" Style="{StaticResource DimLabel}" TextWrapping="Wrap" Margin="0,6,0,0" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

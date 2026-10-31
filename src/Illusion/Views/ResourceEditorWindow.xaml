@@ -45,6 +45,8 @@
             <MenuItem Header="Tools">
                 <MenuItem Header="Hide triangles…" Click="HideTriangles_Click"
                           ToolTip="Hide the triangles of the selected mesh that lie inside a box, without rebuilding it" />
+                <MenuItem Header="Light editor…" Click="LightEditor_Click"
+                          ToolTip="The lights of the archive on the stage: colour, brightness, range, cone, direction, shadows and sector, with the viewport lit by them" />
                 <Separator />
                 <MenuItem Header="Clone car…" Click="CloneCar_Click"
                           ToolTip="A second car under a new model name, registered in the tables and built" />

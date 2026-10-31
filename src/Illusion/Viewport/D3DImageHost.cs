@@ -1325,6 +1325,19 @@ public sealed class D3DImageHost : ViewportControl, ITransformGizmoHost, IBoxGiz
     /// points and two colours a line. An empty list takes them away.</summary>
     internal void ShowToolMarks(IReadOnlyList<Vector3> lines, IReadOnlyList<Vector4> colours) => Rnd?.SetToolMarkLines(lines, colours);
 
+    /// <summary>Draws the light editor's light volumes (a layer of their own beside the tool marks). An empty list
+    /// takes them away.</summary>
+    internal void ShowLightLines(IReadOnlyList<Vector3> lines, IReadOnlyList<Vector4> colours) => Rnd?.SetLightLines(lines, colours);
+
+    /// <summary>Shades the scene with the given lights instead of the sun (on), or as before (off).</summary>
+    internal void SetLightPreview(IReadOnlyList<LocalLight> lights, bool on, float ambient)
+    {
+        if (Rnd == null) return;
+        Rnd.LocalLights = lights;
+        Rnd.PreviewLocalLights = on;
+        Rnd.PreviewAmbient = ambient;
+    }
+
     /// <summary>The ray a pixel of the viewport looks along, in world space.</summary>
     internal (Vector3 Origin, Vector3 Direction) ViewportRay(Point pos) => BuildViewportRay(pos);
 

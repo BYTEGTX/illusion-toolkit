@@ -32,6 +32,35 @@ public sealed unsafe class SceneRenderer : IDisposable
     private readonly LineOverlayRenderer _partShapeRenderer;
     private readonly LineOverlayRenderer _hitBoxRenderer;
     private readonly LineOverlayRenderer _pickedRenderer;
+    private readonly LineOverlayRenderer _lightRenderer;
+    private ComPtr<ID3D11Buffer> _localLightsCb;
+
+    // Fills the local-light block and binds it at b2 for the pixel stage. The slot is not touched by any other
+    // pass, and a bound constant buffer outlives the shader switches between the mesh passes, so once a frame does.
+    private void UploadLocalLights(ComPtr<ID3D11DeviceContext> ctx)
+    {
+        var block = new LocalLightConstants();
+        int n = 0;
+        if (PreviewLocalLights)
+        {
+            foreach (LocalLight light in LocalLights)
+            {
+                if (n >= LocalLightConstants.Max) break;
+                Vector3 dir = light.Direction.LengthSquared() > 1e-8f ? Vector3.Normalize(light.Direction) : -Vector3.UnitZ;
+                float cosHalf = light.Cone > 0f && light.Cone < MathF.PI ? MathF.Cos(light.Cone / 2f) : -2f;
+                int o = n * 4;
+                block.PosRange[o] = light.Position.X; block.PosRange[o + 1] = light.Position.Y;
+                block.PosRange[o + 2] = light.Position.Z; block.PosRange[o + 3] = light.Range;
+                block.Color[o] = light.Color.X; block.Color[o + 1] = light.Color.Y; block.Color[o + 2] = light.Color.Z;
+                block.DirCone[o] = dir.X; block.DirCone[o + 1] = dir.Y; block.DirCone[o + 2] = dir.Z; block.DirCone[o + 3] = cosHalf;
+                n++;
+            }
+        }
+        block.Count = new Vector4(n, 0f, 0f, 0f);
+        GpuBuffers.UpdateConstant(ctx, _localLightsCb, ref block);
+        var cb = _localLightsCb.Handle;
+        ctx.PSSetConstantBuffers(2, 1, &cb);
+    }
     private readonly ActorMarkerRenderer _actorRenderer;
     private readonly ActorMarkerRenderer _actorSelectionRenderer;
     private readonly SelectionOutlineRenderer _selectionOutline;
@@ -187,6 +216,27 @@ public sealed unsafe class SceneRenderer : IDisposable
 
     private static readonly object ToolMarkKey = new();
 
+    /// <summary>
+    /// Replaces the light editor's volumes — each light's reach drawn as lines (a cone for a spot, rings for a
+    /// light that shines all round). A layer of its own, so it never takes the tool marks another window shows.
+    /// </summary>
+    public void SetLightLines(IReadOnlyList<Vector3> lineVertices, IReadOnlyList<Vector4> colors) =>
+        _lightRenderer.SetDistrict(LightLinesKey, lineVertices, colors);
+
+    private static readonly object LightLinesKey = new();
+
+    /// <summary>The lights the preview shades the scene with (only the first <see cref="LocalLightConstants.Max"/>
+    /// are used). Ignored while <see cref="PreviewLocalLights"/> is off.</summary>
+    public IReadOnlyList<LocalLight> LocalLights { get; set; } = [];
+
+    /// <summary>Shade with <see cref="LocalLights"/> instead of the sun: the sun goes dark and the ambient drops to
+    /// <see cref="PreviewAmbient"/>, as inside a room.</summary>
+    public bool PreviewLocalLights { get; set; }
+
+    /// <summary>The grey ambient level used while previewing local lights (an interior's sector ambient is about
+    /// 0.2–0.3).</summary>
+    public float PreviewAmbient { get; set; } = 0.25f;
+
     private static readonly object HitBoxKey = new();
 
     /// <summary>Removes one archive's rig (district unload).</summary>
@@ -321,6 +371,8 @@ public sealed unsafe class SceneRenderer : IDisposable
         _partShapeRenderer = new LineOverlayRenderer(_linePass);
         _hitBoxRenderer = new LineOverlayRenderer(_linePass);
         _pickedRenderer = new LineOverlayRenderer(_linePass);
+        _lightRenderer = new LineOverlayRenderer(_linePass);
+        _localLightsCb = GpuBuffers.CreateConstant<LocalLightConstants>(gpu);
         _actorRenderer = new ActorMarkerRenderer(_linePass);
         _actorSelectionRenderer = new ActorMarkerRenderer(_linePass);
         _selectionOutline = new SelectionOutlineRenderer(gpu);
@@ -525,6 +577,12 @@ public sealed unsafe class SceneRenderer : IDisposable
         // read for one thing (the view vector the specular and the rim are shaped by), so it is the SHADING eye:
         // under a parallel projection the highlight is a uniform band, not a glare fanning out of a point.
         var lighting = Lighting with { CameraPos = new Vector4(Camera.ShadingEye, 0f) };
+        UploadLocalLights(ctx);
+        if (PreviewLocalLights)
+        {
+            var ambient = new Vector4(PreviewAmbient, PreviewAmbient, PreviewAmbient, 0f);
+            lighting = lighting with { SunColor = Vector4.Zero, AmbientUp = ambient, AmbientDown = ambient * 0.8f };
+        }
 
         int drawn = 0;
         DrawCalls = 0;
@@ -629,6 +687,9 @@ public sealed unsafe class SceneRenderer : IDisposable
         // Actor glyphs: everything the .act pack places that has no geometry of its own, coloured per segment
         // (per category), so the tint stays neutral.
         if (ShowActors) _actorRenderer.Render(ctx, overlayFrame, OverlayLineStyle.Default(Vector4.One));
+        // The light editor's volumes, in each light's own colour; faint where something stands in front.
+        if (_lightRenderer.HasData)
+            _lightRenderer.Render(ctx, overlayFrame, OverlayLineStyle.Default(Vector4.One) with { Thickness = 1.6f, HiddenAlpha = 0.3f });
         // The selected actor's glyph is drawn even with the overlay off, so a tree selection always shows up —
         // thicker and much less faded when hidden, since finding it is the whole point.
         _actorSelectionRenderer.Render(ctx, overlayFrame,
@@ -933,6 +994,8 @@ public sealed unsafe class SceneRenderer : IDisposable
         _partShapeRenderer.Dispose();
         _hitBoxRenderer.Dispose();
         _pickedRenderer.Dispose();
+        _lightRenderer.Dispose();
+        _localLightsCb.Dispose();
         _navMeshRenderer.Dispose();
         _navRenderer.Dispose();
         _linePass.Dispose();

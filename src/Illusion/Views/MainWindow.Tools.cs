@@ -96,6 +96,11 @@ public partial class MainWindow
     private void ArchiveMaterials_Click(object sender, RoutedEventArgs e) =>
         ShowTool(_archiveMaterials, () => new ArchiveMaterialsWindow(Viewport, null) { Owner = this }, w => _archiveMaterials = w);
 
+    private LightEditorWindow? _lightEditor;
+
+    private void LightEditor_Click(object sender, RoutedEventArgs e) =>
+        ShowTool(_lightEditor, () => new LightEditorWindow(Viewport) { Owner = this }, w => _lightEditor = w);
+
     private void LoadZones_Click(object sender, RoutedEventArgs e) =>
         ShowTool(_loadZones, () => new LoadZonesWindow(Viewport) { Owner = this }, w => _loadZones = w);
 
